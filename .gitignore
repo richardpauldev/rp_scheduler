@@ -1,0 +1,25 @@
+#Python
+venv/
+*.pyc
+__pycache__/
+instance/
+
+#React
+node_modules/
+build/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+npm-debug.log
+yarn-error.log
+
+# MySQL
+*.sql
+
+# General
+.DS_Store
+.env
+.flaskenv
+*.log
+*.csv
