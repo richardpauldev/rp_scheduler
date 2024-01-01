@@ -1,12 +1,15 @@
-body, h1, h2, h3, p, ul, ol, li, button, input {
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
+
+* {
   margin: 0;
   padding: 0;
   border: 0;
-  font-family: 'Arial', sans-serif;
+  font-family: 'Roboto', sans-serif;
 }
 
 body {
   background-color: #f4f4f4;
+  background-image: linear-gradient(to right, #f4f4f4, #e8e8e8);
   color: #333;
   line-height: 1.6;
   font-size: 16px;
@@ -20,7 +23,7 @@ body {
 }
 
 header {
-  background: #333;
+  background: linear-gradient(to right, #333, #555);
   color: #fff;
   padding-top: 30px;
   min-height: 70px;
@@ -32,6 +35,11 @@ header a {
   text-decoration: none;
   text-transform: uppercase;
   font-size: 16px;
+  transition: color 0.3s;
+}
+
+header a:hover {
+  color: #ddd;
 }
 
 nav {
@@ -70,6 +78,7 @@ button, .btn {
   border-radius: 5px;
   border: none;
   font-size: 16px;
+  transition: background-color 0.3s;
 }
 
 button:hover, .btn:hover {
@@ -96,6 +105,7 @@ form select {
   margin-bottom: 20px;
   border-radius: 5px;
   border: 1px solid #ddd;
+  transition: border-color 0.3s;
 }
 
 form input[type="submit"] {
