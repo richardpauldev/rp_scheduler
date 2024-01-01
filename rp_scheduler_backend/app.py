@@ -4,6 +4,7 @@ from logging.handlers import RotatingFileHandler
 from flask import Flask
 from flask import request, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
 from datetime import datetime
 from flask_login import LoginManager, UserMixin, login_user, login_required, logout_user, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -15,6 +16,7 @@ from io import BytesIO
 # TODO hide database URI
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://rp_scheduler_user:xn5TjtpJdxJQiqH9AX@localhost/rp_scheduler_db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
@@ -22,6 +24,8 @@ db = SQLAlchemy(app)
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
+
+app.secret_key = 'thisissupersecret'
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -73,13 +77,28 @@ class PairingHistory(db.Model):
     paired_date = db.Column(db.Date)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-class User(db.Model):
+class User(db.Model, UserMixin):
     __tablename__ = 'users'
     user_id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(255), unique=True)
     password_hash = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    @property
+    def is_authenticated(self):
+        return True
+    
+    @property
+    def is_active(self):
+        return True
+    
+    @property
+    def is_anonymous(self):
+        return False
+
+    def get_id(self):
+        return self.user_id
 
 class Blacklist(db.Model):
     __tablename__ = 'blacklist'
@@ -88,9 +107,8 @@ class Blacklist(db.Model):
     agent2_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-def create_database(app):
-    with app.app_context():
-        db.create_all()
+def create_database():
+    db.create_all()
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -102,26 +120,31 @@ def register_user(username, password):
     db.session.add(new_user)
     db.session.commit()
 
-@app.route('/login', methods=['GET', 'POST'])
+@app.route('/api/login', methods=['POST'])
 def login():
-    if request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-        user = User.query.filter_by(username=username).first()
-        if user and check_password_hash(user.password_hash, password):
-            login_user(user)
-            return 'Logged in successfully!'
-        else:
-            return 'Invalid username or password'
-    return 'Login Page'
+    logger.info("Received Login Request")
 
-@app.route('/logout')
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    if not username or not password:
+        return jsonify({'error': 'Missing username or password'}), 400
+    
+    user = User.query.filter_by(username=username).first()
+    if user and check_password_hash(user.password_hash, password):
+        login_user(user)
+        return jsonify({'message': 'Logged in successfully!'}), 200
+    else:
+        return jsonify({'error': 'Invalid username or password'}), 401
+
+@app.route('/api/logout')
 @login_required
 def logout():
     logout_user()
     return 'You have been logged out!'
 
-@app.route('/agents/create', methods=['POST'])
+@app.route('/api/agents/create', methods=['POST'])
 @login_required
 def create_agent():
     try:
@@ -141,7 +164,7 @@ def create_agent():
         logger.error(f"Error creating agent {str(e)}")
         return jsonify({'message': 'Failed to create agent'}), 500 
 
-@app.route('/agents/get', methods=['GET'])
+@app.route('/api/agents/get', methods=['GET'])
 @login_required
 def get_agents():
     agents = Agent.query
@@ -154,7 +177,7 @@ def get_agents():
     return jsonify([{'agent_id': agent.agent_id, 'first_name': agent.first_name, 'last_name': agent.last_name, 'email': agent.email, 'phone_number': agent.phone_number, 'active_status': agent.active_status} for agent in agents])
 
 
-@app.route('/agents/update/<int:agent_id>', methods=['PUT'])
+@app.route('/api/agents/update/<int:agent_id>', methods=['PUT'])
 @login_required
 def update_agent(agent_id):
     agent = Agent.query.get_or_404(agent_id)
@@ -173,7 +196,7 @@ def update_agent(agent_id):
         return jsonify({'message': 'Failed to update agent'}), 500
     
 
-@app.route('/agents/delete/<int:agent_id>', methods=['DELETE'])
+@app.route('/api/agents/delete/<int:agent_id>', methods=['DELETE'])
 @login_required
 def delete_agent(agent_id):
     agent = Agent.query.get_or_404(agent_id)
@@ -186,7 +209,7 @@ def delete_agent(agent_id):
         logger.error(f"Error deleting agent: {str(e)}")
         return jsonify({'message': 'Failed to delete agent'}), 500
 
-@app.route('/schedule/generate', methods=['POST'])
+@app.route('/api/schedule/generate', methods=['POST'])
 @login_required
 def generate_schedule():
     #TODO create_schedule method
@@ -196,7 +219,8 @@ def generate_schedule():
     create_schedule()
     return jsonify({'message': 'Schedule generated'}), 201
 
-@app.route('/schedule/get', methods=['GET'])
+@app.route('/api/schedule/get', methods=['GET'])
+@login_required
 def get_schedule():
     schedules = Schedule.query.all()
     schedule_data = []
@@ -209,7 +233,7 @@ def get_schedule():
         })
     return jsonify(schedule_data)
 
-@app.route('/schedule/update/<int:schedule_id>', methods=['PUT'])
+@app.route('/api/schedule/update/<int:schedule_id>', methods=['PUT'])
 @login_required
 def update_schedule(schedule_id):
     schedule = Schedule.query.get_or_404(schedule_id)
@@ -219,7 +243,7 @@ def update_schedule(schedule_id):
     db.session.commit()
     return jsonify({'message': 'Schedule updated'})
 
-@app.route('/availability/set', methods=['POST'])
+@app.route('/api/availability/set', methods=['POST'])
 @login_required
 def set_availability():
     data = request.json
@@ -240,7 +264,7 @@ def set_availability():
     db.session.commit()
     return jsonify({'message': 'Availability updated'})
 
-@app.route('/availability/get', methods=['GET'])
+@app.route('/api/availability/get', methods=['GET'])
 @login_required
 def get_availability():
     agent_id = request.args.get('agent_id', type=int)
@@ -260,7 +284,7 @@ def get_availability():
 
     return jsonify(availability_data)
 
-@app.route('/data/import', methods=['POST'])
+@app.route('/api/data/import', methods=['POST'])
 @login_required
 def import_data():
     if 'file' not in request.files:
@@ -278,7 +302,7 @@ def import_data():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx', 'xls'}
 
-@app.route('/data/export', methods=['GET'])
+@app.route('/api/data/export', methods=['GET'])
 @login_required
 def export_data():
     format_type = request.args.get('format', 'pdf')
@@ -299,7 +323,7 @@ def export_schedule_excel(schedule_id):
     #TODO
     pass
 
-@app.route('/history/record', methods=['POST'])
+@app.route('/api/history/record', methods=['POST'])
 @login_required
 def record_pairing():
     data = request.json
@@ -312,7 +336,7 @@ def record_pairing():
     db.session.commit()
     return jsonify({'message': 'Pairing recorded successfully'}), 201
 
-@app.route('/history/get', methods=['GET'])
+@app.route('/api/history/get', methods=['GET'])
 @login_required
 def get_history():
     agent_id = request.args.get('agent_id', type=int)
@@ -347,6 +371,19 @@ def internal_server_error(e):
 
 # Remember to use @login_required when necessary
 if __name__ == '__main__':
-    print("trying to create db")
-    create_database(app)
+    with app.app_context():
+        print("trying to create db")
+        create_database()
+
+        # Create a test user
+        test_username = 'testuser'
+        test_password = 'Test1234'  # Choose a secure password
+
+        existing_user = User.query.filter_by(username=test_username).first()
+        if not existing_user:
+            register_user(test_username, test_password)
+            print("Test user created.")
+        else:
+            print("Test user already exists.")
+
     app.run(debug=True)
