@@ -3,7 +3,7 @@ import React from 'react';
 function Home() {
     return (
         <div>
-            <h2> Welcome to RP Scheduler</h2>
+            <h2> Welcome to the Dashboard</h2>
         </div>
     );
 }

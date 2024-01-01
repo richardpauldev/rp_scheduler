@@ -142,7 +142,7 @@ def login():
 @login_required
 def logout():
     logout_user()
-    return 'You have been logged out!'
+    return jsonify({'message': 'You have been logged out'}), 200
 
 @app.route('/api/agents/create', methods=['POST'])
 @login_required
