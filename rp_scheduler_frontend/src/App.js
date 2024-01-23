@@ -4,6 +4,7 @@ import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import Login from "./components/Login";
 import NotFound from "./components/NotFound";
 import Dashboard from "./components/Dashboard";
+import AgentList from "./components/AgentList";
 
 function App() {
   return (
@@ -20,6 +21,9 @@ function App() {
                 <li>
                   <Link to="/dashboard">Dashboard</Link>
                 </li>
+                <li>
+                  <Link to="/agents">Agents</Link>
+                </li>
               </ul>
             </nav>
           </div>
@@ -28,6 +32,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Login />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/agents" element={<AgentList />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </div>
