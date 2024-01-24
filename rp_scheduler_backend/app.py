@@ -44,6 +44,15 @@ class Agent(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class RecurringAvailability(db.Model):
+    __tablename__ = 'recurring_availability'
+    id = db.Column(db.Integer, primary_key=True)
+    agent_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
+    day_of_week = db.Column(db.String(10))
+    is_available = db.Column(db.Boolean)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class Availability(db.Model):
     __tablename__ = 'availability'
     availability_id = db.Column(db.Integer, primary_key=True)
