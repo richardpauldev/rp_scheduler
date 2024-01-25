@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import PropTypes from 'prop-types';
 
-function Login() {
+function Login({ onLogin }) {
     const navigate = useNavigate();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -23,6 +24,7 @@ function Login() {
 
             if (response.ok) {
                 console.log('Logged in successfully');
+                onLogin(true);
                 navigate('/dashboard');
             } else {
                 setError('Invalid username or password');
@@ -60,5 +62,9 @@ function Login() {
         </div>
     );
 }
+
+Login.propTypes = {
+    onLogin: PropTypes.func.isRequired
+};
 
 export default Login;

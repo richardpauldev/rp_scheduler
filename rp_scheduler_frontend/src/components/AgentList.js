@@ -123,7 +123,7 @@ function AgentList() {
 
   const handleDelete = (agentId) => {
     const confirmDelete = window.confirm(
-      "Are yo sure you want to delete this agent?"
+      "Are you sure you want to delete this agent?"
     );
     if (confirmDelete) {
       fetch(`/api/agents/delete/${agentId}`, {
@@ -215,7 +215,7 @@ function AgentList() {
                   type="button"
                   onClick={() => handleDelete(editingAgent.agent_id)}
                 >
-                  Delete
+                  Delete Agent
                 </button>
               )}
             </form>
