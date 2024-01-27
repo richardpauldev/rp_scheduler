@@ -25,6 +25,7 @@ function Login({ onLogin }) {
             if (response.ok) {
                 console.log('Logged in successfully');
                 onLogin(true);
+                localStorage.setItem("isLoggedIn", "true");
                 navigate('/dashboard');
             } else {
                 setError('Invalid username or password');
