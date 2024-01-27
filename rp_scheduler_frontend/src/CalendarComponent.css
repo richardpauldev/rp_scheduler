@@ -25,7 +25,22 @@
 }
 
 .calendar-header {
-    font-weight: bold;
+    cursor: pointer;
+    background-color: #f0f0f0;
+    border: 1px solid #d0d0d0;
+    text-align: center;
+    padding: 5px;
+    margin: 2px;
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+
+    &:hover {
+        background-color: #e0e0e0;
+    }
+}
+
+.calendar-day.no-transition {
+    transition: none;
 }
 
 .calendar-day {
