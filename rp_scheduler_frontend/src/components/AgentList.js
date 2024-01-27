@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
-import DatePicker from 'react-datepicker';
-import 'react-datepicker/dist/react-datepicker.css';
+import CalendarComponent from "./CalendarComponent";
 
 function AgentList() {
   const [agents, setAgents] = useState([]);
@@ -13,16 +12,8 @@ function AgentList() {
     email: "",
     phone_number: "",
     active_status: false,
-    weekly_availability: {
-      monday: false,
-      tuesday: false,
-      wednesday: false,
-      thursday: false,
-      friday: false,
-      saturday: false,
-      sunday: false,
-    },
-    // unavailable_dates: [],
+    weeklyAvailability: {},
+    selectedDates: [],
   });
 
   const [editingAgent, setEditingAgent] = useState(null);
@@ -77,61 +68,108 @@ function AgentList() {
         email: agentToEdit.email,
         phone_number: agentToEdit.phone_number,
         active_status: agentToEdit.active_status,
-        weekly_availability: agentToEdit.weekly_availability,
-        // unavailable_dates: agentToEdit.unavailable_dates
       });
-      setEditingAgent(agentToEdit);
+      fetchAgentAvailability(agentId);
       setShowAddAgent(true); // Reuse the same form for editing
     }
   };
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    const url = editingAgent
-      ? `/api/agents/update/${editingAgent.agent_id}`
-      : "/api/agents/create";
-
-    const method = editingAgent ? "PUT" : "POST";
-
-    fetch(url, {
-      method: method,
+  const fetchAgentAvailability = (agentId) => {
+    fetch(`/api/agents/${agentId}/availability`, {
+      method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
       credentials: "include",
-      body: JSON.stringify(newAgent),
     })
       .then((response) => {
         if (!response.ok) {
-          throw new Error("HTTP error! status: ${response.status}");
+          throw new Error(`HTTP error! status: ${response.status}`);
         }
         return response.json();
       })
-      .then(() => {
-        setShowAddAgent(false);
-        setEditingAgent(null);
-        setNewAgent({
-          first_name: "",
-          last_name: "",
-          email: "",
-          phone_number: "",
-          active_status: false,
-          weekly_availability: {
-            monday: false,
-            tuesday: false,
-            wednesday: false,
-            thursday: false,
-            friday: false,
-            saturday: false,
-            sunday: false,
-          },
-          // unavailable_dates: [],
-        });
-        loadAgents();
+      .then((response) => {
+        const { weeklyAvailability, specificDates } = response;
+        setNewAgent(prevState => ({
+          ...prevState,
+          weeklyAvailability,
+          specificDates
+        }));
       })
       .catch((error) => {
-        console.error("Error adding agent:", error);
+        console.error("Error fetching agents:", error);
+        setError(error);
+        setLoading(false);
       });
+  };
+
+  const createAgent = (agentDetails) => {
+    return fetch('/api/agents/create', {
+      method: 'POST',
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(agentDetails),
+      credentials: 'include',
+    }).then(response => response.json());
+  };
+
+  const updateAgentDetails = (agentId, agentDetails) => {
+    return fetch(`/api/agents/update/${agentId}`, {
+      method: 'PUT',
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(agentDetails),
+      credentials: 'include',
+    });
+  };
+
+  const updateAgentAvailability = (agentId, availability) => {
+    return fetch(`/api/agents/availability/update/${agentId}`, {
+      method: 'PUT',
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(availability),
+      credentials: 'include',
+    });
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    const agentDetails = {
+      first_name: newAgent.first_name,
+      last_name: newAgent.last_name,
+      email: newAgent.email,
+      phone_number: newAgent.phone_number,
+      active_status: newAgent.active_status,
+    };
+
+    const availability = {
+      weeklyAvailability: newAgent.weeklyAvailability,
+      specificDates: newAgent.selectedDates,
+    };
+    
+    try {
+      let agentId;
+      if(editingAgent) {
+        await updateAgentDetails(editingAgent.agent_id, agentDetails);
+        agentId = editingAgent.agent_id;
+      } else {
+        const creationResponse = await createAgent(agentDetails);
+        agentId  = creationResponse.agent_id;
+      }
+
+      await updateAgentAvailability(agentId, availability);
+
+      setShowAddAgent(false);
+      setEditingAgent(null);
+      setNewAgent({
+        first_name: "",
+        last_name: "",
+        email: "",
+        phone_number: "",
+        active_status: false,
+      });
+      loadAgents();
+    } catch (error) {
+      console.error("Error updating/adding agent:", error)
+    }
   };
 
   const closeModal = () => {
@@ -143,16 +181,6 @@ function AgentList() {
       email: "",
       phone_number: "",
       active_status: false,
-      weekly_availability: {
-        monday: false,
-        tuesday: false,
-        wednesday: false,
-        thursday: false,
-        friday: false,
-        saturday: false,
-        sunday: false,
-      },
-      // unavailable_dates: [],
     }); // Reset the form fields
   };
 
@@ -187,34 +215,13 @@ function AgentList() {
     }
   };
 
-  const handleAvailabilityChange = (day) => {
-    setNewAgent({
-      ...newAgent,
-      weekly_availability: {
-        ...newAgent.weekly_availability,
-        [day]: !newAgent.weekly_availability[day],
-      },
+  const handleDayToggle = (day) => {
+    setNewAgent(prevState => {
+      const updatedDates = prevState.selectedDates.includes(day)
+        ? prevState.selectedDates.filter(d => d !== day)
+        : [...prevState.selectedDates, day];
+      return { ...prevState, selectedDates: updatedDates };
     });
-  };
-
-  const handleUnavailableDatesChange = (date) => {
-    if (Array.isArray(date)) {
-      setNewAgent({
-        ...newAgent,
-        unavailable_dates: date,
-      });
-    } else {
-      let updatedDates = [...newAgent.unavailable_dates];
-      if (!updatedDates.includes(date)) {
-        updatedDates.push(date);
-      } else {
-        updatedDates = updatedDates.filter(d => d.getTime() !== date.getTime());
-      }
-      setNewAgent({
-        ...newAgent,
-        unavailable_dates: updatedDates,
-      });
-    }
   };
 
   if (loading) return <div>Loading...</div>;
@@ -272,26 +279,6 @@ function AgentList() {
                   onChange={handleFormChange}
                 />
               </label>
-              <div>
-                <label>Weekly Availability:</label>
-                {Object.keys(newAgent.weekly_availability).map((day) => (
-                  <div key={day}>
-                    <input
-                      type="checkbox"
-                      checked={newAgent.weekly_availability[day]}
-                      onChange={() => handleAvailabilityChange(day)}
-                    />
-                    {day.charAt(0).toUpperCase() + day.slice(1)}
-                  </div>
-                ))}
-              </div>
-              {/* <div>
-                <label>Specific Unavailable Dates:</label>
-                <DatePicker
-                  selected={newAgent.unavailable_dates}
-                  onChange={handleUnavailableDatesChange}
-                /> */}
-              {/* </div> */}
               <button type="submit">
                 {editingAgent ? "Update" : "Create"} Agent
               </button>
@@ -303,6 +290,7 @@ function AgentList() {
                   Delete Agent
                 </button>
               )}
+              <CalendarComponent selectedDates={newAgent.selectedDates} onDayToggle={handleDayToggle} />
             </form>
           </div>
         </div>
