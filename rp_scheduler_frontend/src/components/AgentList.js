@@ -2,10 +2,13 @@ import React, { useState, useEffect } from "react";
 import CalendarComponent from "./CalendarComponent";
 
 function AgentList() {
+    // State hooks for managing agents, loading status, errors, and modal visibility
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAddAgent, setShowAddAgent] = useState(false);
+
+  // State for managing new and editing agent details
   const [newAgent, setNewAgent] = useState({
     first_name: "",
     last_name: "",
@@ -13,15 +16,30 @@ function AgentList() {
     phone_number: "",
     active_status: false,
     weeklyAvailability: {},
-    selectedDates: [],
+    exceptionDays: [],
   });
-
   const [editingAgent, setEditingAgent] = useState(null);
 
+
+  const handleResponse = (response) => {
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+    return response.json();
+  };
+
+  const handleError = (error) => {
+    console.error("Error:", error);
+    setError(error);
+    setLoading(false);
+  };
+
+  // Effect hook to load agents on component mount
   useEffect(() => {
     loadAgents();
   }, []);
 
+  // Function to fetch agent list from API
   const loadAgents = () => {
     fetch("/api/agents/get", {
       method: "GET",
@@ -30,21 +48,12 @@ function AgentList() {
       },
       credentials: "include",
     })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-      })
+      .then(handleResponse)
       .then((data) => {
         setAgents(data);
         setLoading(false);
       })
-      .catch((error) => {
-        console.error("Error fetching agents:", error);
-        setError(error);
-        setLoading(false);
-      });
+      .catch(handleError);
   };
 
   const handleAddAgent = () => {
@@ -53,21 +62,21 @@ function AgentList() {
 
   const handleFormChange = (event) => {
     const { name, value, type, checked } = event.target;
-    setNewAgent({
-      ...newAgent,
+    setNewAgent(prevState => ({
+      ...prevState,
       [name]: type === "checkbox" ? checked : value,
-    });
+    }));
   };
 
   const handleEdit = (agentId) => {
     const agentToEdit = agents.find((agent) => agent.agent_id === agentId);
     if (agentToEdit) {
+      // Prepare Agent for editing
+      setEditingAgent(agentToEdit);
       setNewAgent({
-        first_name: agentToEdit.first_name,
-        last_name: agentToEdit.last_name,
-        email: agentToEdit.email,
-        phone_number: agentToEdit.phone_number,
-        active_status: agentToEdit.active_status,
+        ...agentToEdit,
+        weeklyAvailability: {},
+        exceptionDays: [],
       });
       fetchAgentAvailability(agentId);
       setShowAddAgent(true); // Reuse the same form for editing
@@ -82,12 +91,7 @@ function AgentList() {
       },
       credentials: "include",
     })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        return response.json();
-      })
+      .then(handleResponse)
       .then((response) => {
         const { weeklyAvailability, specificDates } = response;
         setNewAgent(prevState => ({
@@ -96,11 +100,7 @@ function AgentList() {
           specificDates
         }));
       })
-      .catch((error) => {
-        console.error("Error fetching agents:", error);
-        setError(error);
-        setLoading(false);
-      });
+      .catch(handleError);
   };
 
   const createAgent = (agentDetails) => {
@@ -142,7 +142,7 @@ function AgentList() {
 
     const availability = {
       weeklyAvailability: newAgent.weeklyAvailability,
-      specificDates: newAgent.selectedDates,
+      specificDates: newAgent.exceptionDays,
     };
     
     try {
@@ -165,6 +165,8 @@ function AgentList() {
         email: "",
         phone_number: "",
         active_status: false,
+        weeklyAvailability: {},
+        exceptionDays: [],
       });
       loadAgents();
     } catch (error) {
@@ -215,12 +217,10 @@ function AgentList() {
     }
   };
 
-  const handleDayToggle = (day) => {
+  const handleDayToggle = (selectedDays, selectedWeekdays) => {
     setNewAgent(prevState => {
-      const updatedDates = prevState.selectedDates.includes(day)
-        ? prevState.selectedDates.filter(d => d !== day)
-        : [...prevState.selectedDates, day];
-      return { ...prevState, selectedDates: updatedDates };
+      //TODO
+      return { ...prevState, exceptionDays: []};
     });
   };
 
@@ -290,7 +290,7 @@ function AgentList() {
                   Delete Agent
                 </button>
               )}
-              <CalendarComponent selectedDates={newAgent.selectedDates} onDayToggle={handleDayToggle} />
+              <CalendarComponent exceptionDays={newAgent.exceptionDays} onDayToggle={handleDayToggle} />
             </form>
           </div>
         </div>
