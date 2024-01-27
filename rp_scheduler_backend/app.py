@@ -166,6 +166,23 @@ def create_agent():
             active_status=data['active_status']
         )
         db.session.add(new_agent)
+        db.session.flush()
+
+        for day, availability in data['weekly_availability'].items():
+            new_availability = RecurringAvailability(
+                agent_id=new_agent.agent_id,
+                day_of_week=day,
+                is_available=availability
+            )
+            db.session.add(new_availability)
+
+        # for date in data['unavailable_dates']:
+        #     new_date_availability = Availability(
+        #         agent_id=new_agent.agent_id,
+        #         date=date,
+        #     )
+        #     db.session.add(new_date_availability)
+
         db.session.commit()
         return jsonify({'message': 'New agent created'}), 201
     except Exception as e:
@@ -183,7 +200,24 @@ def get_agents():
                                (Agent.last_name.like(f'%{search}%')) |
                                (Agent.email.like(f'%{search}%')))
     agents = agents.all()
-    return jsonify([{'agent_id': agent.agent_id, 'first_name': agent.first_name, 'last_name': agent.last_name, 'email': agent.email, 'phone_number': agent.phone_number, 'active_status': agent.active_status} for agent in agents])
+
+    agents_data = []
+    for agent in agents:
+        weekly_availability = {}
+        rec_availabilities = RecurringAvailability.query.filter_by(agent_id=agent.agent_id).all()
+        for rec_avail in rec_availabilities:
+            weekly_availability[rec_avail.day_of_week] = rec_avail.is_available
+
+        agents_data.append({
+            'agent_id': agent.agent_id,
+            'first_name': agent.first_name,
+            'last_name': agent.last_name,
+            'email': agent.email,
+            'phone_number': agent.phone_number,
+            'active_status': agent.active_status,
+            'weekly_availability': weekly_availability
+        })
+    return jsonify(agents_data)
 
 
 @app.route('/api/agents/update/<int:agent_id>', methods=['PUT'])
@@ -197,6 +231,22 @@ def update_agent(agent_id):
         agent.email = data.get('email', agent.email)
         agent.phone_number = data.get('phone_number', agent.phone_number)
         agent.active_status = data.get('active_status', agent.active_status)
+        
+        # Update weekly availability
+        for day, availability in data['weekly_availability'].items():
+            RecurringAvailability.query.filter_by(agent_id=agent_id, day_of_week=day).update({'is_available': availability})
+
+        # Update unavailable dates
+        # Clear existing unavailable dates
+        Availability.query.filter_by(agent_id=agent_id, is_available=False).delete()
+        for date in data['unavailable_dates']:
+            new_date_availability = Availability(
+                agent_id=agent_id,
+                date=date,
+                is_available=False
+            )
+            db.session.add(new_date_availability)
+
         db.session.commit()
         return jsonify({'message': 'Agent updated'})
     except Exception as e:

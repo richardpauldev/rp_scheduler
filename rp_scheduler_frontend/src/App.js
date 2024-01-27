@@ -1,5 +1,5 @@
 import "./App.css";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
 import Login from "./components/Login";
 import NotFound from "./components/NotFound";
@@ -10,8 +10,14 @@ import ScheduleViewer from "./components/ScheduleViewer";
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
+  useEffect(() => {
+    const loggedIn = localStorage.getItem("isLoggedIn") === "true";
+    setIsLoggedIn(loggedIn);
+  }, []);
+
   const handleLogin = (status) => {
     setIsLoggedIn(status);
+    localStorage.setItem("isLoggedIn", status.toString());
   };
 
   return (

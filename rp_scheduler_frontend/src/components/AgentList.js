@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from "react";
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 function AgentList() {
   const [agents, setAgents] = useState([]);
@@ -11,7 +13,18 @@ function AgentList() {
     email: "",
     phone_number: "",
     active_status: false,
+    weekly_availability: {
+      monday: false,
+      tuesday: false,
+      wednesday: false,
+      thursday: false,
+      friday: false,
+      saturday: false,
+      sunday: false,
+    },
+    // unavailable_dates: [],
   });
+
   const [editingAgent, setEditingAgent] = useState(null);
 
   useEffect(() => {
@@ -56,17 +69,19 @@ function AgentList() {
   };
 
   const handleEdit = (agentId) => {
-    const agentToEdit = agents.find(agent => agent.agent_id === agentId);
+    const agentToEdit = agents.find((agent) => agent.agent_id === agentId);
     if (agentToEdit) {
-        setNewAgent({
-            first_name: agentToEdit.first_name,
-            last_name: agentToEdit.last_name,
-            email: agentToEdit.email,
-            phone_number: agentToEdit.phone_number,
-            active_status: agentToEdit.active_status,
-        });
-        setEditingAgent(agentToEdit);
-        setShowAddAgent(true); // Reuse the same form for editing
+      setNewAgent({
+        first_name: agentToEdit.first_name,
+        last_name: agentToEdit.last_name,
+        email: agentToEdit.email,
+        phone_number: agentToEdit.phone_number,
+        active_status: agentToEdit.active_status,
+        weekly_availability: agentToEdit.weekly_availability,
+        // unavailable_dates: agentToEdit.unavailable_dates
+      });
+      setEditingAgent(agentToEdit);
+      setShowAddAgent(true); // Reuse the same form for editing
     }
   };
 
@@ -101,6 +116,16 @@ function AgentList() {
           email: "",
           phone_number: "",
           active_status: false,
+          weekly_availability: {
+            monday: false,
+            tuesday: false,
+            wednesday: false,
+            thursday: false,
+            friday: false,
+            saturday: false,
+            sunday: false,
+          },
+          // unavailable_dates: [],
         });
         loadAgents();
       })
@@ -113,11 +138,21 @@ function AgentList() {
     setShowAddAgent(false);
     setEditingAgent(null);
     setNewAgent({
-    first_name: "",
-    last_name: "",
-    email: "",
-    phone_number: "",
-    active_status: false,
+      first_name: "",
+      last_name: "",
+      email: "",
+      phone_number: "",
+      active_status: false,
+      weekly_availability: {
+        monday: false,
+        tuesday: false,
+        wednesday: false,
+        thursday: false,
+        friday: false,
+        saturday: false,
+        sunday: false,
+      },
+      // unavailable_dates: [],
     }); // Reset the form fields
   };
 
@@ -149,6 +184,36 @@ function AgentList() {
         .catch((error) => {
           console.error("Error deleting agent:", error);
         });
+    }
+  };
+
+  const handleAvailabilityChange = (day) => {
+    setNewAgent({
+      ...newAgent,
+      weekly_availability: {
+        ...newAgent.weekly_availability,
+        [day]: !newAgent.weekly_availability[day],
+      },
+    });
+  };
+
+  const handleUnavailableDatesChange = (date) => {
+    if (Array.isArray(date)) {
+      setNewAgent({
+        ...newAgent,
+        unavailable_dates: date,
+      });
+    } else {
+      let updatedDates = [...newAgent.unavailable_dates];
+      if (!updatedDates.includes(date)) {
+        updatedDates.push(date);
+      } else {
+        updatedDates = updatedDates.filter(d => d.getTime() !== date.getTime());
+      }
+      setNewAgent({
+        ...newAgent,
+        unavailable_dates: updatedDates,
+      });
     }
   };
 
@@ -207,6 +272,26 @@ function AgentList() {
                   onChange={handleFormChange}
                 />
               </label>
+              <div>
+                <label>Weekly Availability:</label>
+                {Object.keys(newAgent.weekly_availability).map((day) => (
+                  <div key={day}>
+                    <input
+                      type="checkbox"
+                      checked={newAgent.weekly_availability[day]}
+                      onChange={() => handleAvailabilityChange(day)}
+                    />
+                    {day.charAt(0).toUpperCase() + day.slice(1)}
+                  </div>
+                ))}
+              </div>
+              {/* <div>
+                <label>Specific Unavailable Dates:</label>
+                <DatePicker
+                  selected={newAgent.unavailable_dates}
+                  onChange={handleUnavailableDatesChange}
+                /> */}
+              {/* </div> */}
               <button type="submit">
                 {editingAgent ? "Update" : "Create"} Agent
               </button>
