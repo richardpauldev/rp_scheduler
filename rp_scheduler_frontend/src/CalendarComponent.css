@@ -24,6 +24,16 @@
     padding: 10px;
 }
 
+.calendar-header.selected {
+    background-color: #333; /* Match with .calendar-day.selected */
+    color: white; /* Ensures text is visible on the dark background */
+    border: 1px solid #d0d0d0; /* Consistent with non-selected headers */
+
+    &:hover {
+        background-color: #555;
+    }
+}
+
 .calendar-header {
     cursor: pointer;
     background-color: #f0f0f0;
@@ -58,6 +68,10 @@
 .calendar-day.selected {
     background-color: #333;
     color: white;
+
+    &:hover {
+        background-color: #555;
+    }
 }
 
 .calendar-day.empty {

@@ -61,7 +61,7 @@ function CalendarComponent({ onDayToggle }) {
     const days = [];
     for (let i = 0; i < 7; i++) {
       days.push(
-        <div key={`header-${i}`} className="calendar-header" onClick={() => toggleWeekday(i)}>
+        <div key={`header-${i}`} className={`calendar-header ${selectedWeekdays.has(i) ? "selected" : ""}`} onClick={() => toggleWeekday(i)}>
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][i]}
         </div>
       );
