@@ -2,11 +2,17 @@ import React, { useState, useEffect } from "react";
 import CalendarComponent from "./CalendarComponent";
 
 function AgentList() {
-    // State hooks for managing agents, loading status, errors, and modal visibility
+  // State hooks for managing agents, loading status, errors, and modal visibility
   const [agents, setAgents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showAddAgent, setShowAddAgent] = useState(false);
+
+  const [blacklist, setBlacklist] = useState([]);
+
+  // State for managing agent search
+  const [agentSearch, setAgentSearch] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
 
   // State for managing new and editing agent details
   const [newAgent, setNewAgent] = useState({
@@ -19,7 +25,6 @@ function AgentList() {
     exceptionDays: [],
   });
   const [editingAgent, setEditingAgent] = useState(null);
-
 
   const handleResponse = (response) => {
     if (!response.ok) {
@@ -62,7 +67,7 @@ function AgentList() {
 
   const handleFormChange = (event) => {
     const { name, value, type, checked } = event.target;
-    setNewAgent(prevState => ({
+    setNewAgent((prevState) => ({
       ...prevState,
       [name]: type === "checkbox" ? checked : value,
     }));
@@ -94,39 +99,39 @@ function AgentList() {
       .then(handleResponse)
       .then((response) => {
         const { weeklyAvailability, specificDates } = response;
-        setNewAgent(prevState => ({
+        setNewAgent((prevState) => ({
           ...prevState,
           weeklyAvailability,
-          specificDates
+          specificDates,
         }));
       })
       .catch(handleError);
   };
 
   const createAgent = (agentDetails) => {
-    return fetch('/api/agents/create', {
-      method: 'POST',
+    return fetch("/api/agents/create", {
+      method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(agentDetails),
-      credentials: 'include',
-    }).then(response => response.json());
+      credentials: "include",
+    }).then((response) => response.json());
   };
 
   const updateAgentDetails = (agentId, agentDetails) => {
     return fetch(`/api/agents/update/${agentId}`, {
-      method: 'PUT',
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(agentDetails),
-      credentials: 'include',
+      credentials: "include",
     });
   };
 
   const updateAgentAvailability = (agentId, availability) => {
     return fetch(`/api/agents/availability/update/${agentId}`, {
-      method: 'PUT',
+      method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(availability),
-      credentials: 'include',
+      credentials: "include",
     });
   };
 
@@ -144,33 +149,23 @@ function AgentList() {
       weeklyAvailability: newAgent.weeklyAvailability,
       specificDates: newAgent.exceptionDays,
     };
-    
+
     try {
       let agentId;
-      if(editingAgent) {
+      if (editingAgent) {
         await updateAgentDetails(editingAgent.agent_id, agentDetails);
         agentId = editingAgent.agent_id;
       } else {
         const creationResponse = await createAgent(agentDetails);
-        agentId  = creationResponse.agent_id;
+        agentId = creationResponse.agent_id;
       }
 
       await updateAgentAvailability(agentId, availability);
 
-      setShowAddAgent(false);
-      setEditingAgent(null);
-      setNewAgent({
-        first_name: "",
-        last_name: "",
-        email: "",
-        phone_number: "",
-        active_status: false,
-        weeklyAvailability: {},
-        exceptionDays: [],
-      });
+      closeModal();
       loadAgents();
     } catch (error) {
-      console.error("Error updating/adding agent:", error)
+      console.error("Error updating/adding agent:", error);
     }
   };
 
@@ -217,10 +212,38 @@ function AgentList() {
     }
   };
 
+  useEffect(() => {
+    // Fetch agents for the blacklist dropdown based on the search query
+    if (agentSearch.length > 0) {
+      fetch(`/api/agents/get?search=${encodeURIComponent(agentSearch)}`, {
+        method: "GET",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      })
+      .then(handleResponse)
+      .then((data) => {
+        const currentAgentId = editingAgent ? editingAgent.agent_id : null;
+        const filteredAgents = data.filter(agent =>
+          !blacklist.some(blacklistedAgent => blacklistedAgent.agent_id === agent.agent_id) && 
+          agent.agent_id !== currentAgentId
+        );
+        setSearchResults(filteredAgents)})
+      .catch(handleError);
+    }
+  }, [agentSearch, blacklist, editingAgent]);
+
+  const handleBlacklistSelect = (selectedAgent) => {
+    setBlacklist((prevBlacklist) => [...prevBlacklist, selectedAgent]);
+  };
+
+  const handleBlacklistRemove = (agentId) => {
+    setBlacklist((prevBlacklist) => prevBlacklist.filter(agent => agent.agent_id !== agentId));
+  };
+
   const handleDayToggle = (selectedDays, selectedWeekdays) => {
-    setNewAgent(prevState => {
+    setNewAgent((prevState) => {
       //TODO
-      return { ...prevState, exceptionDays: []};
+      return { ...prevState, exceptionDays: [] };
     });
   };
 
@@ -271,7 +294,7 @@ function AgentList() {
                 value={newAgent.phone_number}
               />
               <label>
-                Active Status:
+                Currently Active:
                 <input
                   type="checkbox"
                   name="active_status"
@@ -290,7 +313,39 @@ function AgentList() {
                   Delete Agent
                 </button>
               )}
-              <CalendarComponent exceptionDays={newAgent.exceptionDays} onDayToggle={handleDayToggle} />
+              <div>
+                <CalendarComponent
+                  exceptionDays={newAgent.exceptionDays}
+                  onDayToggle={handleDayToggle}
+                />
+              </div>
+              <div>
+                <input
+                  type="text"
+                  placeholder="Search Agents"
+                  value={agentSearch}
+                  onChange={(e) => setAgentSearch(e.target.value)}
+                />
+                {searchResults.map((agent) => (
+                  <div key={agent.agent_id}>
+                    <button onClick={() => handleBlacklistSelect(agent)}>
+                      Add to Blacklist
+                    </button>
+                    {agent.first_name} {agent.last_name}
+                  </div>
+                ))}
+              </div>
+              <div>
+                <h3>Blacklisted Agents:</h3>
+                {blacklist.map((agent) => (
+                  <div key={agent.agent_id}>
+                    <button onClick={() => handleBlacklistRemove(agent.agent_id)}>
+                      Remove
+                    </button>
+                    {agent.first_name} {agent.last_name}
+                  </div>
+                ))}
+              </div>
             </form>
           </div>
         </div>
