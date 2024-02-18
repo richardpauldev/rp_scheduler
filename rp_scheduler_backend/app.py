@@ -428,27 +428,6 @@ def import_data():
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'xlsx', 'xls'}
 
-@app.route('/api/data/export', methods=['GET'])
-@login_required
-def export_data():
-    format_type = request.args.get('format', 'pdf')
-    schedule_id = request.args.get('schedule_id')
-
-    if format_type == 'pdf':
-        return export_schedule_pdf(schedule_id)
-    elif format_type == 'excel':
-        return export_schedule_excel(schedule_id)
-    else:
-        return jsonify({'message': 'Invalid format specified'}), 400
-    
-def export_schedule_pdf(schedule_id):
-    #TODO
-    pass
-
-def export_schedule_excel(schedule_id):
-    #TODO
-    pass
-
 @app.route('/api/history/record', methods=['POST'])
 @login_required
 def record_pairing():

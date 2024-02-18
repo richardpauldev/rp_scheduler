@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import CalendarComponent from "./CalendarComponent";
 
 function AgentList() {
@@ -20,7 +20,7 @@ function AgentList() {
     last_name: "",
     email: "",
     phone_number: "",
-    active_status: false,
+    active_status: true,
     weeklyAvailability: {},
     exceptionDays: [],
   });
@@ -39,13 +39,8 @@ function AgentList() {
     setLoading(false);
   };
 
-  // Effect hook to load agents on component mount
-  useEffect(() => {
-    loadAgents();
-  }, []);
-
   // Function to fetch agent list from API
-  const loadAgents = () => {
+  const loadAgents = useCallback(() => {
     fetch("/api/agents/get", {
       method: "GET",
       headers: {
@@ -59,7 +54,12 @@ function AgentList() {
         setLoading(false);
       })
       .catch(handleError);
-  };
+  }, []);
+
+    // Effect hook to load agents on component mount
+    useEffect(() => {
+      loadAgents();
+    }, [loadAgents]);
 
   const handleAddAgent = () => {
     setShowAddAgent(true);
@@ -178,7 +178,7 @@ function AgentList() {
       last_name: "",
       email: "",
       phone_number: "",
-      active_status: false,
+      active_status: true,
     }); // Reset the form fields
   };
 
@@ -235,7 +235,8 @@ function AgentList() {
     }
   }, [agentSearch, blacklist, editingAgent]);
 
-  const handleBlacklistSelect = (selectedAgent) => {
+  const handleBlacklistSelect = (selectedAgent, event) => {
+    event.stopPropagation();
     setBlacklist((prevBlacklist) => [...prevBlacklist, selectedAgent]);
   };
 
@@ -347,7 +348,7 @@ function AgentList() {
                 />
                 {searchResults.map((agent) => (
                   <div key={agent.agent_id}>
-                    <button onClick={() => handleBlacklistSelect(agent)}>
+                    <button type="button" onClick={(e) => handleBlacklistSelect(agent, e)}>
                       Add to Blacklist
                     </button>
                     {agent.first_name} {agent.last_name}
@@ -358,7 +359,7 @@ function AgentList() {
                 <h3>Blacklisted Agents:</h3>
                 {blacklist.map((agent) => (
                   <div key={agent.agent_id}>
-                    <button onClick={() => handleBlacklistRemove(agent.agent_id)}>
+                    <button type="button" onClick={() => handleBlacklistRemove(agent.agent_id)}>
                       Remove
                     </button>
                     {agent.first_name} {agent.last_name}

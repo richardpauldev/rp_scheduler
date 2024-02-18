@@ -114,12 +114,12 @@ function CalendarComponent({ onDayToggle }) {
   return (
     <div className="calendar-container">
       <div className="calendar-nav">
-        <button onClick={prevMonth}>&lt;</button>
+        <button type="button" onClick={prevMonth}>&lt;</button>
         <span className="calendar-month">
           {currentMonth.toLocaleString("default", { month: "long" })}{" "}
           {currentMonth.getFullYear()}
         </span>
-        <button onClick={nextMonth}>&gt;</button>
+        <button type="button" onClick={nextMonth}>&gt;</button>
       </div>
       <div className="calendar-grid">{renderDays()}</div>
     </div>
