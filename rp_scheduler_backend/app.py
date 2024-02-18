@@ -11,6 +11,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from reportlab.pdfgen import canvas
 from io import BytesIO
 from functools import wraps
+from sqlalchemy import or_, and_
 
 # TODO input validation
 # TODO Error handling of db transactions
@@ -125,38 +126,12 @@ class Agent(db.Model):
     active_status = db.Column(db.Boolean)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-class RecurringAvailability(db.Model):
-    __tablename__ = 'recurring_availability'
-    id = db.Column(db.Integer, primary_key=True)
-    agent_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
-    day_of_week = db.Column(db.String(10))
-    is_available = db.Column(db.Boolean)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-class Availability(db.Model):
-    __tablename__ = 'availability'
-    availability_id = db.Column(db.Integer, primary_key=True)
-    agent_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
-    date = db.Column(db.Date)
-    is_available = db.Column(db.Boolean)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
 class PairingHistory(db.Model):
     __tablename__ = 'pairing_history'
     history_id = db.Column(db.Integer, primary_key=True)
     agent1_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
     agent2_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
     paired_date = db.Column(db.Date)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-
-class Blacklist(db.Model):
-    __tablename__ = 'blacklist'
-    blacklist_id = db.Column(db.Integer, primary_key=True)
-    agent1_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
-    agent2_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 @app.route('/api/agents/create', methods=['POST'])
@@ -173,8 +148,9 @@ def create_agent():
         )
         db.session.add(new_agent)
         db.session.flush()
+        agent_id = new_agent.agent_id
         db.session.commit()
-        return jsonify({'message': 'New agent created'}), 201
+        return jsonify({'message': 'New agent created', 'agent_id': agent_id}), 201
     except Exception as e:
         db.session.rollback()
         logger.error(f"Error creating agent {str(e)}")
@@ -220,7 +196,69 @@ def update_agent(agent_id):
         db.session.rollback()
         logger.error(f"Error updating agent: {str(e)}")
         return jsonify({'message': 'Failed to update agent'}), 500
-    
+
+@app.route('/api/agents/delete/<int:agent_id>', methods=['DELETE'])
+@login_required
+def delete_agent(agent_id):
+    agent = Agent.query.get_or_404(agent_id)
+    try:
+        RecurringAvailability.query.filter_by(agent_id=agent_id).delete()
+
+        Availability.query.filter_by(agent_id=agent_id).delete()
+
+        PairingHistory.query.filter(or_(PairingHistory.agent1_id == agent_id,
+                                       PairingHistory.agent2_id == agent_id)).delete()
+        
+        Blacklist.query.filter(or_(Blacklist.agent1_id == agent_id,
+                               Blacklist.agent2_id == agent_id)).delete()
+        db.session.delete(agent)
+        db.session.commit()
+        return jsonify({'message': 'Agent and related data deleted'})
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error deleting agent and related data: {str(e)}")
+        return jsonify({'message': 'Failed to delete agent and related data'}), 500
+  
+class RecurringAvailability(db.Model):
+    __tablename__ = 'recurring_availability'
+    id = db.Column(db.Integer, primary_key=True)
+    agent_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
+    day_of_week = db.Column(db.String(10))
+    is_available = db.Column(db.Boolean)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class Availability(db.Model):
+    __tablename__ = 'availability'
+    availability_id = db.Column(db.Integer, primary_key=True)
+    agent_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
+    date = db.Column(db.Date)
+    is_available = db.Column(db.Boolean)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+@app.route('/api/agents/<int:agent_id>/availability', methods=['GET'])
+@login_required
+def get_agent_availability(agent_id):
+    try:
+        agent = Agent.query.get_or_404(agent_id)
+
+        weekly_availability = RecurringAvailability.query.filter_by(agent_id=agent_id).all()
+        weekly_data = {av.day_of_week: av.is_available for av in weekly_availability}
+
+        specific_dates = Availability.query.filter_by(agent_id=agent_id).all()
+        specific_dates_data = [{'date': av.date, 'is_available': av.is_available} for av in specific_dates]
+
+        return jsonify({
+            'agent_id': agent.agent_id,
+            'weeklyAvailability': weekly_data,
+            'specificDates': specific_dates_data
+        })
+    except Exception as e:
+        logger.exception(f"Error fetching availability for agent {agent_id}: {str(e)}")
+        return jsonify({'message': 'Failed to fetch availability data'}), 500
+  
+
 @app.route('/api/agents/availability/update/<int:agent_id>', methods=['PUT'])
 @login_required
 def update_availability(agent_id):
@@ -249,49 +287,50 @@ def update_availability(agent_id):
         db.session.rollback()
         logger.error(f"Error updating availability for agent {agent_id}: {str(e)}")
         return jsonify({'message': 'Failed to update availability'}), 500
-
-@app.route('/api/agents/delete/<int:agent_id>', methods=['DELETE'])
+    
+class Blacklist(db.Model):
+    __tablename__ = 'blacklist'
+    blacklist_id = db.Column(db.Integer, primary_key=True)
+    agent1_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
+    agent2_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+@app.route('/api/agents/blacklist/update/<int:agent_id>', methods=['PUT'])
 @login_required
-def delete_agent(agent_id):
-    agent = Agent.query.get_or_404(agent_id)
+def update_blacklist(agent_id):
     try:
-        RecurringAvailability.query.filter_by(agent_id=agent_id).delete()
+        data = request.json
 
-        Availability.query.filter_by(agent_id=agent_id).delete()
-
-        PairingHistory.query.filter_by((PairingHistory.agent1_id == agent_id) |
-                                       (PairingHistory.agent2_id == agent_id)).delete()
+        incoming_blacklist_ids = request.json.get('blacklist_ids', [])
+        if not incoming_blacklist_ids:
+            raise ValueError("No blacklist IDs provided")
         
-        Blacklist.query.filter((Blacklist.agent1_id == agent_id) |
-                               (Blacklist.agent2_id == agent_id)).delete()
-        db.session.delete(agent)
+        current_blacklist = Blacklist.query.filter(or_(Blacklist.agent1_id == agent_id, Blacklist.agent2_id == agent_id)).all()
+
+        current_blacklist_pairs = {(entry.agent1_id, entry.agent2_id) for entry in current_blacklist}
+
+        incoming_blacklist_pairs = {(agent_id, blk_id) if agent_id < blk_id else (blk_id, agent_id) for blk_id in incoming_blacklist_ids}
+
+        pairs_to_add = incoming_blacklist_pairs - current_blacklist_pairs
+        pairs_to_remove = current_blacklist_pairs - incoming_blacklist_pairs
+
+        for agent1, agent2 in pairs_to_add:
+            db.session.add(Blacklist(agent_id=agent1, agent2=agent2))
+
+        for agent1, agent2 in pairs_to_remove:
+            Blacklist.query.filter(
+                or_(
+                    and_(Blacklist.agent1_id == agent1, Blacklist.agent2_id == agent2),
+                    and_(Blacklist.agent1_id == agent2, Blacklist.agent2_id == agent1)
+                )
+            ).delete()
+
         db.session.commit()
-        return jsonify({'message': 'Agent and related data deleted'})
+        return jsonify({'message': 'Blacklist updated'})
     except Exception as e:
         db.session.rollback()
-        logger.error(f"Error deleting agent and related data: {str(e)}")
-        return jsonify({'message': 'Failed to delete agent and related data'}), 500
-
-@app.route('/api/agents/<int:agent_id>/availability', methods=['GET'])
-@login_required
-def get_agent_availability(agent_id):
-    try:
-        agent = Agent.query.get_or_404(agent_id)
-
-        weekly_availability = RecurringAvailability.query.filter_by(agent_id=agent_id).all()
-        weekly_data = {av.day_of_week: av.is_available for av in weekly_availability}
-
-        specific_dates = Availability.query.filter_by(agent_id=agent_id).all()
-        specific_dates_data = [{'date': av.date, 'is_available': av.is_available} for av in specific_dates]
-
-        return jsonify({
-            'agent_id': agent.agent_id,
-            'weeklyAvailability': weekly_data,
-            'specificDates': specific_dates_data
-        })
-    except Exception as e:
-        logger.exception(f"Error fetching availability for agent {agent_id}: {str(e)}")
-        return jsonify({'message': 'Failed to fetch availability data'}), 500
+        logger.error(f"Error updating blacklist for agent {agent_id}: {str(e)}")
+        return jsonify({'message': 'Failed to update blacklist'}), 500
 #
 #   End of Agent Stuff
 #

@@ -161,6 +161,7 @@ function AgentList() {
       }
 
       await updateAgentAvailability(agentId, availability);
+      await updateBlacklist();
 
       closeModal();
       loadAgents();
@@ -205,6 +206,8 @@ function AgentList() {
             (agent) => agent.agent_id !== agentId
           );
           setAgents(updatedAgents);
+        }).then(() => {
+          closeModal();
         })
         .catch((error) => {
           console.error("Error deleting agent:", error);
@@ -239,6 +242,22 @@ function AgentList() {
   const handleBlacklistRemove = (agentId) => {
     setBlacklist((prevBlacklist) => prevBlacklist.filter(agent => agent.agent_id !== agentId));
   };
+
+  const updateBlacklist = () => {
+    if (editingAgent) {
+      const agentId = editingAgent.agent_id;
+      const blacklistIds = blacklist.map(agent => agent.agent_id);
+
+      fetch(`/api/agents/blacklist/update/${agentId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ blacklist_ids: blacklistIds }),
+        credentials: "include",
+      })
+        .then(handleResponse)
+        .catch(handleError);
+    }
+  }
 
   const handleDayToggle = (selectedDays, selectedWeekdays) => {
     setNewAgent((prevState) => {
