@@ -295,6 +295,26 @@ class Blacklist(db.Model):
     agent2_id = db.Column(db.Integer, db.ForeignKey('agents.agent_id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+@app.route('/api/agents/blacklist/get/<int:agent_id>', methods=['GET'])
+@login_required
+def get_blacklist_for_agent(agent_id):
+    try:
+        blacklist_entries = Blacklist.query.filter(
+            (Blacklist.agent1_id == agent_id) | (Blacklist.agent2_id == agent_id)
+        ).all()
+
+        blacklist_ids = []
+        for entry in blacklist_entries:
+            if entry.agent1_id == agent_id:
+                blacklist_ids.append(entry.agent2_id)
+            else:
+                blacklist_ids.append(entry.agent1_id)
+        
+        return jsonify(blacklist_ids), 200
+    except Exception as e:
+        print(f"Failed to retrieve blacklist for agent {agent_id}: {str(e)}")
+        return jsonify({'message': 'Failed to retrieve blacklist'}), 500
+    
 @app.route('/api/agents/blacklist/update/<int:agent_id>', methods=['PUT'])
 @login_required
 def update_blacklist(agent_id):
@@ -315,7 +335,7 @@ def update_blacklist(agent_id):
         pairs_to_remove = current_blacklist_pairs - incoming_blacklist_pairs
 
         for agent1, agent2 in pairs_to_add:
-            db.session.add(Blacklist(agent_id=agent1, agent2=agent2))
+            db.session.add(Blacklist(agent1_id=agent1, agent2_id=agent2))
 
         for agent1, agent2 in pairs_to_remove:
             Blacklist.query.filter(

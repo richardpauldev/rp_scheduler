@@ -84,6 +84,7 @@ function AgentList() {
         exceptionDays: [],
       });
       fetchAgentAvailability(agentId);
+      fetchBlacklistForAgent(agentId);
       setShowAddAgent(true); // Reuse the same form for editing
     }
   };
@@ -180,6 +181,8 @@ function AgentList() {
       phone_number: "",
       active_status: true,
     }); // Reset the form fields
+    setAgentSearch('');
+    setBlacklist([]);
   };
 
   const handleDelete = (agentId) => {
@@ -242,6 +245,21 @@ function AgentList() {
 
   const handleBlacklistRemove = (agentId) => {
     setBlacklist((prevBlacklist) => prevBlacklist.filter(agent => agent.agent_id !== agentId));
+  };
+
+  const fetchBlacklistForAgent = (agentId) => {
+    fetch(`/api/agents/blacklist/get/${agentId}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+    })
+      .then(handleResponse)
+      .then((blacklist)  => {
+        setBlacklist(blacklist);
+      })
+      .catch(handleError);
   };
 
   const updateBlacklist = () => {
@@ -322,24 +340,8 @@ function AgentList() {
                   onChange={handleFormChange}
                 />
               </label>
-              <button type="submit">
-                {editingAgent ? "Update" : "Create"} Agent
-              </button>
-              {editingAgent && (
-                <button
-                  type="button"
-                  onClick={() => handleDelete(editingAgent.agent_id)}
-                >
-                  Delete Agent
-                </button>
-              )}
               <div>
-                <CalendarComponent
-                  exceptionDays={newAgent.exceptionDays}
-                  onDayToggle={handleDayToggle}
-                />
-              </div>
-              <div>
+                <h3>Blacklisted Agents:</h3>
                 <input
                   type="text"
                   placeholder="Search Agents"
@@ -356,7 +358,6 @@ function AgentList() {
                 ))}
               </div>
               <div>
-                <h3>Blacklisted Agents:</h3>
                 {blacklist.map((agent) => (
                   <div key={agent.agent_id}>
                     <button type="button" onClick={() => handleBlacklistRemove(agent.agent_id)}>
@@ -366,6 +367,23 @@ function AgentList() {
                   </div>
                 ))}
               </div>
+              <div>
+                <CalendarComponent
+                  exceptionDays={newAgent.exceptionDays}
+                  onDayToggle={handleDayToggle}
+                />
+              </div>
+              <button type="submit">
+                {editingAgent ? "Update" : "Create"} Agent
+              </button>
+              {editingAgent && (
+                <button
+                  type="button"
+                  onClick={() => handleDelete(editingAgent.agent_id)}
+                >
+                  Delete Agent
+                </button>
+              )}
             </form>
           </div>
         </div>
