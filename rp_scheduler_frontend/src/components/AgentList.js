@@ -162,7 +162,7 @@ function AgentList() {
       }
 
       await updateAgentAvailability(agentId, availability);
-      await updateBlacklist();
+      await updateBlacklist(agentId);
 
       closeModal();
       loadAgents();
@@ -256,26 +256,26 @@ function AgentList() {
       credentials: "include",
     })
       .then(handleResponse)
-      .then((blacklist)  => {
-        setBlacklist(blacklist);
+      .then((blacklistedIds)  => {
+        const blacklistAgents = agents.filter(agent => 
+          blacklistedIds.includes(agent.agent_id)
+        );
+        setBlacklist(blacklistAgents);
       })
       .catch(handleError);
   };
 
-  const updateBlacklist = () => {
-    if (editingAgent) {
-      const agentId = editingAgent.agent_id;
-      const blacklistIds = blacklist.map(agent => agent.agent_id);
+  const updateBlacklist = (agentId) => {
+    const blacklistIds = blacklist.map(agent => agent.agent_id);
 
-      fetch(`/api/agents/blacklist/update/${agentId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ blacklist_ids: blacklistIds }),
-        credentials: "include",
-      })
-        .then(handleResponse)
-        .catch(handleError);
-    }
+    fetch(`/api/agents/blacklist/update/${agentId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ blacklist_ids: blacklistIds }),
+      credentials: "include",
+    })
+      .then(handleResponse)
+      .catch(handleError);
   }
 
   const handleDayToggle = (selectedDays, selectedWeekdays) => {

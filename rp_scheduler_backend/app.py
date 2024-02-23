@@ -322,8 +322,6 @@ def update_blacklist(agent_id):
         data = request.json
 
         incoming_blacklist_ids = request.json.get('blacklist_ids', [])
-        if not incoming_blacklist_ids:
-            raise ValueError("No blacklist IDs provided")
         
         current_blacklist = Blacklist.query.filter(or_(Blacklist.agent1_id == agent_id, Blacklist.agent2_id == agent_id)).all()
 
