@@ -83,9 +83,30 @@ function AgentList() {
         weeklyAvailability: {},
         exceptionDays: [],
       });
+      fetchAgentAvailability(agentId);
       fetchBlacklistForAgent(agentId);
       setShowAddAgent(true); // Reuse the same form for editing
     }
+  };
+
+  const fetchAgentAvailability = (agentId) => {
+    fetch(`/api/agents/${agentId}/availability`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      credentials: "include",
+    })
+      .then(handleResponse)
+      .then((response) => {
+        const { weeklyAvailability, specificDates } = response;
+        setNewAgent((prevState) => ({
+          ...prevState,
+          weeklyAvailability,
+          specificDates,
+        }));
+      })
+      .catch(handleError);
   };
 
   const createAgent = (agentDetails) => {
@@ -166,39 +187,6 @@ function AgentList() {
     setBlacklist([]);
   };
 
-  const handleDelete = (agentId) => {
-    const confirmDelete = window.confirm(
-      "Are you sure you want to delete this agent?"
-    );
-    if (confirmDelete) {
-      fetch(`/api/agents/delete/${agentId}`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-          }
-          return response.json();
-        })
-        .then(() => {
-          // Filter out the deleted agent from the agents list
-          const updatedAgents = agents.filter(
-            (agent) => agent.agent_id !== agentId
-          );
-          setAgents(updatedAgents);
-        }).then(() => {
-          closeModal();
-        })
-        .catch((error) => {
-          console.error("Error deleting agent:", error);
-        });
-    }
-  };
-
   useEffect(() => {
     // Fetch agents for the blacklist dropdown based on the search query
     if (agentSearch.length > 0) {
@@ -219,45 +207,7 @@ function AgentList() {
     }
   }, [agentSearch, blacklist, editingAgent]);
 
-  const handleBlacklistSelect = (selectedAgent, event) => {
-    event.stopPropagation();
-    setBlacklist((prevBlacklist) => [...prevBlacklist, selectedAgent]);
-  };
-
-  const handleBlacklistRemove = (agentId) => {
-    setBlacklist((prevBlacklist) => prevBlacklist.filter(agent => agent.agent_id !== agentId));
-  };
-
-  const fetchBlacklistForAgent = (agentId) => {
-    fetch(`/api/agents/blacklist/get/${agentId}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      credentials: "include",
-    })
-      .then(handleResponse)
-      .then((blacklistedIds)  => {
-        const blacklistAgents = agents.filter(agent => 
-          blacklistedIds.includes(agent.agent_id)
-        );
-        setBlacklist(blacklistAgents);
-      })
-      .catch(handleError);
-  };
-
-  const updateBlacklist = (agentId) => {
-    const blacklistIds = blacklist.map(agent => agent.agent_id);
-
-    fetch(`/api/agents/blacklist/update/${agentId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ blacklist_ids: blacklistIds }),
-      credentials: "include",
-    })
-      .then(handleResponse)
-      .catch(handleError);
-  }
+// Some blacklist and delete methods...
 
   const handleDayToggle = useCallback((selectedDays, selectedWeekdays) => {
     const weekdaysArray = Array.from(selectedWeekdays);
@@ -268,13 +218,6 @@ function AgentList() {
       weeklyAvailability: { weekdays: weekdaysArray },
     }));
   }, []);
-
-  // const handleDayToggle = (selectedDays, selectedWeekdays) => {
-  //   setNewAgent((prevState) => {
-  //     // let updatedExceptionDays = [...prevState.exceptionDays, ...selectedDays];
-  //     return { ...prevState, exceptionDays: [] };
-  //   });
-  // };
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error.message}</div>;
@@ -291,63 +234,6 @@ function AgentList() {
             </span>
             <h2>{editingAgent ? "Update Agent" : "Add Agent"}</h2>
             <form onSubmit={handleSubmit}>
-              <input
-                type="text"
-                name="first_name"
-                placeholder="First Name"
-                onChange={handleFormChange}
-                value={newAgent.first_name}
-                required
-              />
-              <input
-                type="text"
-                name="last_name"
-                placeholder="Last Name"
-                onChange={handleFormChange}
-                value={newAgent.last_name}
-                required
-              />
-              <input
-                type="email"
-                name="email"
-                placeholder="Email"
-                onChange={handleFormChange}
-                value={newAgent.email}
-                required
-              />
-              <input
-                type="text"
-                name="phone_number"
-                placeholder="Phone Number"
-                onChange={handleFormChange}
-                value={newAgent.phone_number}
-              />
-              <label>
-                Currently Active:
-                <input
-                  type="checkbox"
-                  name="active_status"
-                  checked={newAgent.active_status}
-                  onChange={handleFormChange}
-                />
-              </label>
-              <div>
-                <h3>Blacklisted Agents:</h3>
-                <input
-                  type="text"
-                  placeholder="Search Agents"
-                  value={agentSearch}
-                  onChange={(e) => setAgentSearch(e.target.value)}
-                />
-                {searchResults.map((agent) => (
-                  <div key={agent.agent_id}>
-                    <button type="button" onClick={(e) => handleBlacklistSelect(agent, e)}>
-                      Add to Blacklist
-                    </button>
-                    {agent.first_name} {agent.last_name}
-                  </div>
-                ))}
-              </div>
               <div>
                 {blacklist.map((agent) => (
                   <div key={agent.agent_id}>
@@ -360,7 +246,8 @@ function AgentList() {
               </div>
               <div>
                 <CalendarComponent
-                  agentId={editingAgent.agent_id}
+                  weeklyAvailability={newAgent.weeklyAvailability}
+                  exceptionDays={newAgent.exceptionDays}
                   onDayToggle={handleDayToggle}
                 />
               </div>
@@ -379,36 +266,154 @@ function AgentList() {
           </div>
         </div>
       )}
-      <table>
-        <thead>
-          <tr>
-            <th>First Name</th>
-            <th>Last Name</th>
-            <th>Email</th>
-            <th>Phone Number</th>
-            <th>Active Status</th>
-            <th>Update</th>
-          </tr>
-        </thead>
-        <tbody>
-          {agents.map((agent) => (
-            <tr key={agent.agent_id}>
-              <td>{agent.first_name}</td>
-              <td>{agent.last_name}</td>
-              <td>{agent.email}</td>
-              <td>{agent.phone_number}</td>
-              <td>{agent.active_status ? "Active" : "Inactive"}</td>
-              <td>
-                <button onClick={() => handleEdit(agent.agent_id)}>
-                  Update
-                </button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
 
 export default AgentList;
+
+// CalendarCompenent.js:
+
+import React, { useState, useEffect } from "react";
+import "../CalendarComponent.css";
+
+function CalendarComponent({ weeklyAvailability, exceptedDays: intialExceptedDays, onDayToggle }) {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [exceptedDays, setExceptedDays] = useState({});
+  const [selectedWeekdays, setSelectedWeekdays] = useState(new Set());
+  const [disableTransition, setDisableTransition] = useState(false);
+
+  const daysInMonth = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth() + 1,
+    0
+  ).getDate();
+  const startDayOfMonth = new Date(
+    currentMonth.getFullYear(),
+    currentMonth.getMonth(),
+    1
+  ).getDay();
+
+  const monthKey = `${currentMonth.getFullYear()}-${currentMonth.getMonth()}`;
+
+  const toggleDay = (day) => {
+    setExceptedDays((prev) => {
+      const monthData = new Set(prev[monthKey]);
+      if (monthData.has(day)) {
+        monthData.delete(day);
+      } else {
+        monthData.add(day);
+      }
+      return {
+        ...prev,
+        [monthKey]: monthData
+      };
+    });
+    onDayToggle(exceptedDays, selectedWeekdays);
+  };
+
+  const toggleWeekday = (weekday) => {
+    setSelectedWeekdays(prev => {
+      const newWeekdays = new Set(prev);
+      if (newWeekdays.has(weekday)) {
+        newWeekdays.delete(weekday);
+      } else {
+        newWeekdays.add(weekday);
+      }
+      return newWeekdays;
+    });
+    onDayToggle(exceptedDays, selectedWeekdays);
+  }
+
+  const isDaySelected = (day) => {
+    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    
+    if (exceptedDays[monthKey]?.has(day)) {
+      return !selectedWeekdays.has(date.getDay());
+    }
+    return selectedWeekdays.has(date.getDay());
+  }
+
+  const renderDays = () => {
+    const days = [];
+    console.log("render ", selectedWeekdays)
+    for (let i = 0; i < 7; i++) {
+      days.push(
+        <div key={`header-${i}`} className={`calendar-header ${selectedWeekdays.has(i) ? "selected" : ""}`} onClick={() => toggleWeekday(i)}>
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][i]}
+        </div>
+      );
+    }
+    for (let i = 0; i < startDayOfMonth; i++) {
+      days.push(<div key={`empty-${i}`} className="calendar-day empty"></div>);
+    }
+    for (let i = 1; i <= daysInMonth; i++) {
+      days.push(
+        <div
+          key={i}
+          className={`calendar-day ${isDaySelected(i) ? "selected" : ""} ${disableTransition ? "no-transition" : ""}`}
+          onClick={() => toggleDay(i)}
+        >
+          {i}
+        </div>
+      );
+    }
+    return days;
+  };
+
+  const nextMonth = (event) => {
+    setDisableTransition(true);
+    event.stopPropagation();
+    setCurrentMonth(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1)
+    );
+
+    setTimeout(() => {
+      setDisableTransition(false);
+    }, 50);
+  };
+
+  const prevMonth = (event) => {
+    setDisableTransition(true);
+    event.stopPropagation();
+    setCurrentMonth(
+      new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1)
+    );
+
+    setTimeout(() => {
+      setDisableTransition(false);
+    }, 50);
+  };
+
+  useEffect(() => {
+    const initWeekdays = weeklyAvailability && weeklyAvailability.weekdays
+    ? new Set(weeklyAvailability.weekdays.map(day => parseInt(day, 10)))
+    : new Set();
+    setSelectedWeekdays(initWeekdays);
+    console.log("got", weeklyAvailability)
+    console.log("setting", selectedWeekdays)
+  
+    const initExceptedDays = intialExceptedDays ? Object.keys(intialExceptedDays).reduce((acc, monthKey) => {
+      acc[monthKey] = new Set(intialExceptedDays[monthKey]);
+      return acc;
+    }, {}) : {};
+    setExceptedDays(initExceptedDays);
+   // onDayToggle(exceptedDays, selectedWeekdays);
+  }, []);
+
+  return (
+    <div className="calendar-container">
+      <div className="calendar-nav">
+        <button type="button" onClick={prevMonth}>&lt;</button>
+        <span className="calendar-month">
+          {currentMonth.toLocaleString("default", { month: "long" })}{" "}
+          {currentMonth.getFullYear()}
+        </span>
+        <button type="button" onClick={nextMonth}>&gt;</button>
+      </div>
+      <div className="calendar-grid">{renderDays()}</div>
+    </div>
+  );
+}
+
+export default CalendarComponent;

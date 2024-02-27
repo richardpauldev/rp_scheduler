@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import "../CalendarComponent.css";
+import AgentList from "./AgentList";
 
-function CalendarComponent({ onDayToggle }) {
+function CalendarComponent({ agentId, onDayToggle }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [exceptedDays, setExceptedDays] = useState({});
-  // const [exceptionDays, setExceptionDays] = useState({});
   const [selectedWeekdays, setSelectedWeekdays] = useState(new Set());
   const [disableTransition, setDisableTransition] = useState(false);
 
@@ -31,13 +31,14 @@ function CalendarComponent({ onDayToggle }) {
       }
       return {
         ...prev,
-        [monthKey]: monthData
+        [monthKey]: monthData,
       };
     });
+    onDayToggle(exceptedDays, selectedWeekdays);
   };
 
   const toggleWeekday = (weekday) => {
-    setSelectedWeekdays(prev => {
+    setSelectedWeekdays((prev) => {
       const newWeekdays = new Set(prev);
       if (newWeekdays.has(weekday)) {
         newWeekdays.delete(weekday);
@@ -46,22 +47,33 @@ function CalendarComponent({ onDayToggle }) {
       }
       return newWeekdays;
     });
-  }
+    onDayToggle(exceptedDays, selectedWeekdays);
+  };
 
   const isDaySelected = (day) => {
-    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    
+    const date = new Date(
+      currentMonth.getFullYear(),
+      currentMonth.getMonth(),
+      day
+    );
+
     if (exceptedDays[monthKey]?.has(day)) {
       return !selectedWeekdays.has(date.getDay());
     }
     return selectedWeekdays.has(date.getDay());
-  }
+  };
 
   const renderDays = () => {
     const days = [];
     for (let i = 0; i < 7; i++) {
       days.push(
-        <div key={`header-${i}`} className={`calendar-header ${selectedWeekdays.has(i) ? "selected" : ""}`} onClick={() => toggleWeekday(i)}>
+        <div
+          key={`header-${i}`}
+          className={`calendar-header ${
+            selectedWeekdays.has(i) ? "selected" : ""
+          }`}
+          onClick={() => toggleWeekday(i)}
+        >
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][i]}
         </div>
       );
@@ -73,7 +85,9 @@ function CalendarComponent({ onDayToggle }) {
       days.push(
         <div
           key={i}
-          className={`calendar-day ${isDaySelected(i) ? "selected" : ""} ${disableTransition ? "no-transition" : ""}`}
+          className={`calendar-day ${isDaySelected(i) ? "selected" : ""} ${
+            disableTransition ? "no-transition" : ""
+          }`}
           onClick={() => toggleDay(i)}
         >
           {i}
@@ -108,18 +122,54 @@ function CalendarComponent({ onDayToggle }) {
   };
 
   useEffect(() => {
-    onDayToggle(exceptedDays, selectedWeekdays);
-  }, [exceptedDays, selectedWeekdays]);
+    const fetchAgentAvailability = async (agentId) => {
+      try {
+        const response = await fetch(`/api/agents/${agentId}/availability`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+        });
+        const data = await response.json();
+
+        console.log("data", data);
+        const initWeekdays =
+          data.weeklyAvailability && data.weeklyAvailability.weekdays
+            ? new Set(
+                data.weeklyAvailability.weekdays.map((day) => parseInt(day, 10))
+              )
+            : new Set();
+        setSelectedWeekdays(initWeekdays);
+
+        const initExceptedDays = data.intialExceptedDays
+          ? Object.keys(data.intialExceptedDays).reduce((acc, monthKey) => {
+              acc[monthKey] = new Set(data.intialExceptedDays[monthKey]);
+              return acc;
+            }, {})
+          : {};
+        setExceptedDays(initExceptedDays);
+      } catch (error) {
+        console.error("Failed to fetch availability:", error);
+      }
+    };
+
+    fetchAgentAvailability(agentId);
+  }, [agentId]);
 
   return (
     <div className="calendar-container">
       <div className="calendar-nav">
-        <button type="button" onClick={prevMonth}>&lt;</button>
+        <button type="button" onClick={prevMonth}>
+          &lt;
+        </button>
         <span className="calendar-month">
           {currentMonth.toLocaleString("default", { month: "long" })}{" "}
           {currentMonth.getFullYear()}
         </span>
-        <button type="button" onClick={nextMonth}>&gt;</button>
+        <button type="button" onClick={nextMonth}>
+          &gt;
+        </button>
       </div>
       <div className="calendar-grid">{renderDays()}</div>
     </div>
