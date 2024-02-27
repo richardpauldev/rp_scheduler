@@ -12,6 +12,8 @@ from reportlab.pdfgen import canvas
 from io import BytesIO
 from functools import wraps
 from sqlalchemy import or_, and_
+import calendar
+from collections import defaultdict
 
 # TODO input validation
 # TODO Error handling of db transactions
@@ -244,10 +246,14 @@ def get_agent_availability(agent_id):
         agent = Agent.query.get_or_404(agent_id)
 
         weekly_availability = RecurringAvailability.query.filter_by(agent_id=agent_id).all()
-        weekly_data = {av.day_of_week: av.is_available for av in weekly_availability}
+        weekdays = {day: is_available for day, is_available in enumerate(calendar.day_name)}
+        weekly_data = {"weekdays": [av.day_of_week for av in weekly_availability if av.is_available]}
 
         specific_dates = Availability.query.filter_by(agent_id=agent_id).all()
-        specific_dates_data = [{'date': av.date, 'is_available': av.is_available} for av in specific_dates]
+        specific_dates_data = defaultdict(list)
+        for av in specific_dates:
+            year_month_key = f"{av.date.year}-{av.date.month}"
+            specific_dates_data[year_month_key].append(av.date.day)
 
         return jsonify({
             'agent_id': agent.agent_id,
@@ -265,21 +271,23 @@ def update_availability(agent_id):
     try:
         data = request.json
 
+        Availability.query.filter_by(agent_id=agent_id).delete()
         # Update weekly availability
-        for day, is_available in data['weeklyAvailability'].items():
-            RecurringAvailability.query.filter_by(
-                agent_id=agent_id, day_of_week=day
-            ).update({'is_available': is_available})
-
+        for day in range(7):
+            is_available = day in data['weeklyAvailability']['weekdays']
+            db.session.add(RecurringAvailability(agent_id=agent_id, day_of_week=str(day), is_available=is_available))
+        
         # Update specific dates availability
-        Availability.query.filter_by(agent_id=agent_id).delete()  # Clear existing records
-        for date_info in data['specificDates']:
-            new_availability = Availability(
-                agent_id=agent_id,
-                date=date_info['date'],
-                is_available=date_info['is_available']
-            )
-            db.session.add(new_availability)
+        for year_month, days in data['specificDates'].items():
+            year, month = map(int, year_month.split('-'))
+            for day in days:
+                date = datetime(year, month, day).date()
+
+                weekday = date.weekday()
+                usual_availability = RecurringAvailability.query.filter_by(agent_id=agent_id, day_of_week=str(weekday)).first()
+                is_available = not usual_availability.is_available if usual_availability else True
+                new_availability = Availability(agent_id=agent_id, date=date, is_available=is_available)
+                db.session.add(new_availability)
 
         db.session.commit()
         return jsonify({'message': 'Availability updated'})
@@ -386,27 +394,6 @@ def update_schedule(schedule_id):
     # Be sure to handle potential conflicts or issues arising from schedule changes.
     db.session.commit()
     return jsonify({'message': 'Schedule updated'})
-
-@app.route('/api/availability/set', methods=['POST'])
-@login_required
-def set_availability():
-    data = request.json
-    agent_id = data['agent_id']
-    date = data['date']
-    is_available = data['is_available']
-
-    availability = Availability.query.filter_by(agent_id=agent_id, date=date).first()
-
-    if availability:
-        #Update existing record
-        availability.is_available = is_available
-    else:
-        #Create new availability record
-        new_availability = Availability(agent_id=agent_id, date=date, is_available=is_available)
-        db.session.add(new_availability)
-
-    db.session.commit()
-    return jsonify({'message': 'Availability updated'})
 
 @app.route('/api/availability/get', methods=['GET'])
 @login_required
