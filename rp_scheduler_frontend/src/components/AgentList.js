@@ -125,12 +125,15 @@ function AgentList() {
       active_status: newAgent.active_status,
     };
 
+    console.log("Exception Days:", newAgent.exceptionDays)
     const availability = {
-      weeklyAvailability: newAgent.weeklyAvailability,
+      weeklyAvailability: Array.from(newAgent.weeklyAvailability),
       specificDates: Object.fromEntries( //Because, for some god forsaken reason, JSON doesn't do sets
         Object.entries(newAgent.exceptionDays).map(([yearMonth, days]) => [yearMonth,  Array.from(days)])
       ),
     };
+    console.log("Exception Days:", newAgent.exceptionDays)
+    console.log("Availability:", availability)
 
     try {
       let agentId;
@@ -259,22 +262,19 @@ function AgentList() {
       .catch(handleError);
   }
 
-  const handleDayToggle = useCallback((selectedDays, selectedWeekdays) => {
-    const weekdaysArray = Array.from(selectedWeekdays);
-
+  const handleDayToggle = (selectedDays, selectedWeekdays) => {
     setNewAgent((prevState) => ({
       ...prevState,
       exceptionDays: selectedDays,
-      weeklyAvailability: { weekdays: weekdaysArray },
+      weeklyAvailability: selectedWeekdays,
     }));
-  }, []);
+    console.log("selectedDays", selectedDays);
+    console.log("selectedWeekdays", selectedWeekdays);
+  };
 
-  // const handleDayToggle = (selectedDays, selectedWeekdays) => {
-  //   setNewAgent((prevState) => {
-  //     // let updatedExceptionDays = [...prevState.exceptionDays, ...selectedDays];
-  //     return { ...prevState, exceptionDays: [] };
-  //   });
-  // };
+  useEffect(() => {
+    console.log("Current Agent after updating", newAgent);
+  }, [newAgent])
 
   if (loading) return <div>Loading...</div>;
   if (error) return <div>Error: {error.message}</div>;
@@ -360,7 +360,7 @@ function AgentList() {
               </div>
               <div>
                 <CalendarComponent
-                  agentId={editingAgent.agent_id}
+                  agentId={editingAgent ? editingAgent.agent_id : -1}
                   onDayToggle={handleDayToggle}
                 />
               </div>

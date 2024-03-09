@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import "../CalendarComponent.css";
-import AgentList from "./AgentList";
 
 function CalendarComponent({ agentId, onDayToggle }) {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -34,7 +33,6 @@ function CalendarComponent({ agentId, onDayToggle }) {
         [monthKey]: monthData,
       };
     });
-    onDayToggle(exceptedDays, selectedWeekdays);
   };
 
   const toggleWeekday = (weekday) => {
@@ -47,7 +45,6 @@ function CalendarComponent({ agentId, onDayToggle }) {
       }
       return newWeekdays;
     });
-    onDayToggle(exceptedDays, selectedWeekdays);
   };
 
   const isDaySelected = (day) => {
@@ -122,6 +119,11 @@ function CalendarComponent({ agentId, onDayToggle }) {
   };
 
   useEffect(() => {
+    onDayToggle(exceptedDays, selectedWeekdays);
+  }, [exceptedDays, selectedWeekdays]);
+
+  // When AgentID changes
+  useEffect(() => {
     const fetchAgentAvailability = async (agentId) => {
       try {
         const response = await fetch(`/api/agents/${agentId}/availability`, {
@@ -142,19 +144,22 @@ function CalendarComponent({ agentId, onDayToggle }) {
             : new Set();
         setSelectedWeekdays(initWeekdays);
 
-        const initExceptedDays = data.intialExceptedDays
-          ? Object.keys(data.intialExceptedDays).reduce((acc, monthKey) => {
-              acc[monthKey] = new Set(data.intialExceptedDays[monthKey]);
+        const initExceptedDays = data.specificDates
+          ? Object.keys(data.specificDates).reduce((acc, monthKey) => {
+              acc[monthKey] = new Set(data.specificDates[monthKey]);
               return acc;
             }, {})
           : {};
+        console.log("got excepted", data.intialExceptedDays)
+        console.log("init Excepted", initExceptedDays);
         setExceptedDays(initExceptedDays);
       } catch (error) {
         console.error("Failed to fetch availability:", error);
       }
     };
 
-    fetchAgentAvailability(agentId);
+    if (agentId >= 0)
+      fetchAgentAvailability(agentId);
   }, [agentId]);
 
   return (
