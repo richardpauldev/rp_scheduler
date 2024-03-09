@@ -281,8 +281,10 @@ function AgentList() {
 
   return (
     <div>
-      <h1>Agents</h1>
-      <button onClick={handleAddAgent}>Add Agent</button>
+      <div className="center">
+        <h1>Agents</h1>
+        <button onClick={handleAddAgent}>Add Agent</button>
+      </div>
       {showAddAgent && (
         <div className="modal" style={{ display: "block" }}>
           <div className="modal-content">

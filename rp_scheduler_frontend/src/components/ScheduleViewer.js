@@ -13,7 +13,7 @@ function ScheduleViewer() {
     const formattedDate = currentWeek.toISOString().split("T")[0];
 
     try {
-      const response = await fetch(`/api/schedules/get?date=${formattedDate}`);
+      const response = await fetch(`/api/schedule/get?date=${formattedDate}`);
       const data = await response.json();
       setSchedule(data);
     } catch (error) {
@@ -32,7 +32,7 @@ function ScheduleViewer() {
   const regenerateSchedule = async () => {
     const formattedDate = currentWeek.toISOString().split('T')[0];
     try {
-      const response = await fetch(`api/schedules/regenerate?date=${formattedDate}`, {method: 'POST'});
+      const response = await fetch(`api/schedule/generate?date=${formattedDate}`, {method: 'POST'});
       if (!response.ok) {
         throw new Error('Error regenerating schedule');
       }
@@ -66,7 +66,32 @@ function ScheduleViewer() {
       </button>
       <button onClick={() => handleWeekChange("next")}>Next Week &gt;</button>
       <button onClick={regenerateSchedule}>Regenerate Schedule</button>
-      {/* Code to display the schedule */}
+      {
+        schedule ? (
+          <div>
+            <h2>Schedule Details</h2>
+            <table>
+              <thead>
+                <tr>
+                  <th>Agent 1</th>
+                  <th>Agent 2</th>                  
+                </tr>
+              </thead>
+              <tbody>
+                {schedule.details.map((meeting, index) =>
+                (
+                  <tr key={index}>
+                    <td>{meeting.agent1_id}</td>
+                    <td>{meeting.agent2_id}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p>Loading schedule...</p>
+        )
+      }
     </div>
   );
 }

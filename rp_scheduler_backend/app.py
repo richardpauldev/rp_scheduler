@@ -23,9 +23,9 @@ from sqlalchemy import or_, and_
 import calendar
 from collections import defaultdict
 
-# TODO input validation
-# TODO Error handling of db transactions
 # TODO hide database URI
+
+# TODO Fix issue with Active Status
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
@@ -431,96 +431,72 @@ class ScheduleDetail(db.Model):
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
+def is_agent_available(agent_id, day_name, current_day):
+    specific_avail = Availability.query.filter_by(
+        agent_id=agent_id, date=current_day
+    ).first()
+    if specific_avail is not None:
+        return specific_avail.is_available
+
+    recurring_avail = RecurringAvailability.query.filter_by(
+        agent_id=agent_id, day_of_week=day_name
+    ).first()
+    if recurring_avail is not None:
+        return recurring_avail.is_available
+
+    return False  # Unavailable if both specific and recurring availabilities are None
 
 def create_schedule(monday_date):
     six_months_ago = monday_date - relativedelta(months=6)
     active_agents = Agent.query.filter_by(active_status=True).all()
 
+    all_blacklisted_pairs = Blacklist.query.all()
+    blacklisted_set = {(bl.agent1_id, bl.agent2_id) for bl in all_blacklisted_pairs}
+
+    past_pairings = (
+        db.session.query(ScheduleDetail.agent1_id, ScheduleDetail.agent2_id)
+        .join(Schedule)
+        .filter(Schedule.date > six_months_ago)
+        .all()
+    )
+
+    past_pairings_set = {(pp.agent1_id, pp.agent2_id) for pp in past_pairings}
+
+    week_availability = defaultdict(lambda: defaultdict(bool))
+    for agent in active_agents:
+        for day_offset in range(7):
+            current_day = monday_date + timedelta(days=day_offset)
+            is_available = is_agent_available(agent.agent_id, day_offset, current_day)
+            week_availability[agent.agent_id][day_offset] = is_available
+
     available_pairings = []
     for i, agent1 in enumerate(active_agents):
         for agent2 in active_agents[i + 1 :]:
-            blacklist_check = Blacklist.query.filter(
-                or_(
-                    and_(
-                        Blacklist.agent1_id == agent1.agent_id,
-                        Blacklist.agent2_id == agent2.agent_id,
-                    ),
-                    and_(
-                        Blacklist.agent1_id == agent2.agent_id,
-                        Blacklist.agent2_id == agent1.agent_id,
-                    ),
-                )
-            ).first()
-            if blacklist_check:
+            if (agent1.agent_id, agent2.agent_id) in blacklisted_set or (agent1.agent_id, agent2.agent_id) in blacklisted_set:
                 continue
 
-            past_pairing_check = (
-                db.session.query(ScheduleDetail)
-                .join(Schedule, Schedule.schedule_id == ScheduleDetail.schedule_id)
-                .filter(
-                    Schedule.date > six_months_ago,
-                    or_(
-                        and_(
-                            ScheduleDetail.agent1_id == agent1.agent_id,
-                            ScheduleDetail.agent2_id == agent2.agent_id,
-                        ),
-                        and_(
-                            ScheduleDetail.agent1_id == agent2.agent_id,
-                            ScheduleDetail.agent2_id == agent1.agent_id,
-                        ),
-                    ),
-                )
-                .first()
-            )
-
-            if past_pairing_check:
+            if (agent1.agent_id, agent2.agent_id) in past_pairings_set or (agent2.agent_id, agent1.agent_id) in past_pairings_set:
                 continue
 
-            overlap = False
-            for day_offset in range(7):
-                current_day = monday_date + timedelta(days=day_offset)
-                day_name = current_day.strftime("%A")
-
-                def is_agent_available(agent_id, day_name, current_day):
-                    specific_avail = Availability.query.filter_by(
-                        agent_id=agent_id, date=current_day
-                    ).first()
-                    if specific_avail is not None:
-                        return specific_avail.is_available
-
-                    recurring_avail = RecurringAvailability.query.filter_by(
-                        agent_id=agent_id, day_of_week=day_name
-                    ).first()
-                    if recurring_avail is not None:
-                        return recurring_avail.is_available
-
-                    return False  # Unavailable if both specific and recurring availabilities are None
-
-                agent1_avail = get_agent_availability(
-                    agent1.agent_id, day_name, current_day
-                )
-                agent2_avail = get_agent_availability(
-                    agent2.agent_id, day_name, current_day
-                )
-
-                if (
-                    agent1_avail and agent2_avail
-                ):  # If both agents are available on this day
-                    overlap = True
-                    break
-                # Check if both agents are available on this specific day, considering specific overrides
-
-            if overlap:
+            if any(week_availability[agent1.agent_id][day_offset] and week_availability[agent2.agent_id][day_offset] for day_offset in range(7)):
                 available_pairings.append((agent1, agent2))
 
     return available_pairings
 
 
-@app.route("/api/schedule/generate", methods=["POST"])
-@login_required
-def generate_schedule():
-    available_pairings = create_schedule()
+def generate_schedule_func(monday_date):
+    # Check if a schedule already exists for this date and delete it if so
+    existing_schedule = Schedule.query.filter_by(date=monday_date).first()
+    if existing_schedule:
+        ScheduleDetail.query.filter_by(
+            schedule_id=existing_schedule.schedule_id
+        ).delete()
+        db.session.delete(existing_schedule)
+        db.session.commit()
+
+    available_pairings = create_schedule(monday_date)
     if available_pairings:
+        print("available_pairings", available_pairings)
         schedule = Schedule(date=monday_date)
         db.session.add(schedule)
         db.session.commit()
@@ -535,56 +511,51 @@ def generate_schedule():
 
         db.session.commit()
 
+
+@app.route("/api/schedule/generate", methods=["POST"])
+@login_required
+def generate_schedule():
+    date_str = request.args.get("date")  # Getting the date from query parameter
+    if date_str:
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    else:
+        return jsonify({"error": "Date parameter is required"}), 400
+
+    generate_schedule_func(date)
+
     return jsonify({"message": "Schedule generated"}), 201
 
 
 @app.route("/api/schedule/get", methods=["GET"])
 @login_required
 def get_schedule():
-    schedules = Schedule.query.all()
-    schedule_data = []
-    for schedule in schedules:
-        schedule_details = ScheduleDetail.query.filter_by(
-            schedule_id=schedule.schedule_id
-        ).all()
-        schedule_data.append(
-            {
-                "schedule_id": schedule.schedule_id,
-                "date": schedule.date,
-                "details": [
-                    {"agent1_id": detail.agent1_id, "agent2_id": detail.agent2_id}
-                    for detail in schedule_details
-                ],
-            }
-        )
+    date_str = request.args.get("date")  # Getting the date from query parameter
+    if date_str:
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    else:
+        return jsonify({"error": "Date parameter is required"}), 400
+
+    schedule = Schedule.query.filter_by(date=date).first()
+
+    if not schedule:
+        generate_schedule_func(date)
+        schedule = Schedule.query.filter_by(date=date).first()
+
+    if not schedule:
+        return jsonify({"error": "Regenerated schedule not found"}), 400
+
+    schedule_details = ScheduleDetail.query.filter_by(
+        schedule_id=schedule.schedule_id
+    ).all()
+    schedule_data = {
+        "schedule_id": schedule.schedule_id,
+        "date": schedule.date.isoformat(),
+        "details": [
+            {"agent1_id": detail.agent1_id, "agent2_id": detail.agent2_id}
+            for detail in schedule_details
+        ],
+    }
     return jsonify(schedule_data)
-
-@app.route("/api/availability/get", methods=["GET"])
-@login_required
-def get_availability():
-    agent_id = request.args.get("agent_id", type=int)
-    start_date = request.args.get("start_date")
-    end_date = request.args.get("end_date")
-
-    query = Availability.query
-
-    if agent_id:
-        query = query.filter_by(agent_id=agent_id)
-
-    if start_date and end_date:
-        query = query.filter(Availability.date.between(start_date, end_date))
-
-    availabilities = query.all()
-    availability_data = [
-        {
-            "agent_id": availability.agent_id,
-            "date": availability.date,
-            "is_available": availability.is_available,
-        }
-        for availability in availabilities
-    ]
-
-    return jsonify(availability_data)
 
 
 @app.route("/api/data/import", methods=["POST"])
@@ -605,6 +576,7 @@ def import_data():
 
 def allowed_file(filename):
     return "." in filename and filename.rsplit(".", 1)[1].lower() in {"xlsx", "xls"}
+
 
 @app.errorhandler(Exception)
 def handle_exception(e):
