@@ -20,8 +20,10 @@ from reportlab.pdfgen import canvas
 from io import BytesIO
 from functools import wraps
 from sqlalchemy import or_, and_
+from sqlalchemy.orm import aliased
 import calendar
 from collections import defaultdict
+import heapq
 
 # TODO hide database URI
 
@@ -426,6 +428,7 @@ class ScheduleDetail(db.Model):
     schedule_id = db.Column(db.Integer, db.ForeignKey("schedules.schedule_id"))
     agent1_id = db.Column(db.Integer, db.ForeignKey("agents.agent_id"))
     agent2_id = db.Column(db.Integer, db.ForeignKey("agents.agent_id"))
+    is_paired = db.Column(db.Boolean)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
@@ -447,7 +450,8 @@ def is_agent_available(agent_id, day_name, current_day):
     return False  # Unavailable if both specific and recurring availabilities are None
 
 def create_schedule(monday_date):
-    six_months_ago = monday_date - relativedelta(months=6)
+    pairing_delta = relativedelta(weeks=1) # TODO: change back
+
     active_agents = Agent.query.filter_by(active_status=True).all()
 
     all_blacklisted_pairs = Blacklist.query.all()
@@ -456,7 +460,7 @@ def create_schedule(monday_date):
     past_pairings = (
         db.session.query(ScheduleDetail.agent1_id, ScheduleDetail.agent2_id)
         .join(Schedule)
-        .filter(Schedule.date > six_months_ago)
+        .filter(ScheduleDetail.is_paired, Schedule.date > monday_date - pairing_delta, Schedule.date < monday_date + pairing_delta)
         .all()
     )
 
@@ -481,7 +485,43 @@ def create_schedule(monday_date):
             if any(week_availability[agent1.agent_id][day_offset] and week_availability[agent2.agent_id][day_offset] for day_offset in range(7)):
                 available_pairings.append((agent1, agent2))
 
-    return available_pairings
+    selected_pairings = []
+    unpaired_agents = set(agent.agent_id for agent in active_agents)
+
+    agent_to_partners = defaultdict(set)
+    for agent1, agent2 in available_pairings:
+        agent_to_partners[agent1.agent_id].add(agent2.agent_id)
+        agent_to_partners[agent2.agent_id].add(agent1.agent_id)
+
+    pq = [(len(partners), agent_id) for agent_id, partners in agent_to_partners.items()]
+    heapq.heapify(pq)
+
+    while pq and unpaired_agents:
+        constraint, agent_id = heapq.heappop(pq)
+
+        if agent_id not in unpaired_agents or constraint != len(agent_to_partners[agent_id]):
+            continue
+
+        for partner_id in list(agent_to_partners[agent_id]):
+            if partner_id in unpaired_agents:
+                selected_pairings.append((agent_id, partner_id))
+                unpaired_agents.remove(agent_id)
+                unpaired_agents.remove(partner_id)
+
+                agent_to_partners[partner_id].remove(agent_id)
+                for other_partner_id in agent_to_partners[partner_id]:
+                    agent_to_partners[other_partner_id].discard(partner_id)
+                    if other_partner_id in unpaired_agents:
+                        heapq.heappush(pq, (len(agent_to_partners[other_partner_id]), other_partner_id))
+
+            break
+
+    unpaired_agents_list = list(unpaired_agents)
+
+    # selected_pairings_agents = [(Agent.query.get(agent1_id), Agent.query.get(agent2_id)) for agent1_id, agent2_id in selected_pairings]
+    # unpaired_agents_objects = [Agent.query.get(agent_id) for agent_id in unpaired_agents_list]
+
+    return selected_pairings, unpaired_agents_list
 
 
 def generate_schedule_func(monday_date):
@@ -494,22 +534,31 @@ def generate_schedule_func(monday_date):
         db.session.delete(existing_schedule)
         db.session.commit()
 
-    available_pairings = create_schedule(monday_date)
-    if available_pairings:
-        print("available_pairings", available_pairings)
+    agent_pairings, unpaired_agents = create_schedule(monday_date)
+    if agent_pairings:
         schedule = Schedule(date=monday_date)
         db.session.add(schedule)
         db.session.commit()
 
-        for agent1, agent2 in available_pairings:
+        for agent1_id, agent2_id in agent_pairings:
             schedule_detail = ScheduleDetail(
                 schedule_id=schedule.schedule_id,
-                agent1_id=agent1.agent_id,
-                agent2_id=agent2.agent_id,
+                agent1_id=agent1_id,
+                agent2_id=agent2_id,
+                is_paired=True
             )
             db.session.add(schedule_detail)
 
-        db.session.commit()
+    if unpaired_agents:
+        for agent_id in unpaired_agents:
+            schedule_detail = ScheduleDetail(
+                schedule_id=schedule.schedule_id,
+                agent1_id=agent_id,
+                is_paired=False
+            )
+            db.session.add(schedule_detail)
+
+    db.session.commit()
 
 
 @app.route("/api/schedule/generate", methods=["POST"])
@@ -530,10 +579,13 @@ def generate_schedule():
 @login_required
 def get_schedule():
     date_str = request.args.get("date")  # Getting the date from query parameter
-    if date_str:
-        date = datetime.strptime(date_str, "%Y-%m-%d").date()
-    else:
+    if not date_str:
         return jsonify({"error": "Date parameter is required"}), 400
+
+    try:
+        date = datetime.strptime(date_str, "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
 
     schedule = Schedule.query.filter_by(date=date).first()
 
@@ -543,17 +595,49 @@ def get_schedule():
 
     if not schedule:
         return jsonify({"error": "Regenerated schedule not found"}), 400
+    
+    Agent1 = aliased(Agent)
+    Agent2 = aliased(Agent)
 
-    schedule_details = ScheduleDetail.query.filter_by(
-        schedule_id=schedule.schedule_id
+    schedule_details = db.session.query(
+        ScheduleDetail,
+        Agent1.first_name.label("agent1_first_name"),
+        Agent1.last_name.label("agent1_last_name"),
+        Agent2.first_name.label("agent2_first_name"),
+        Agent2.last_name.label("agent2_last_name")
+    ).join(
+        Agent1, Agent1.agent_id == ScheduleDetail.agent1_id
+    ).join(
+        Agent2, Agent2.agent_id == ScheduleDetail.agent2_id
+    ).filter(
+        ScheduleDetail.is_paired, ScheduleDetail.schedule_id == schedule.schedule_id
     ).all()
+
+    unpaired = db.session.query(
+        ScheduleDetail,
+        Agent1.first_name.label("agent1_first_name"),
+        Agent1.last_name.label("agent1_last_name")
+    ).join(
+        Agent1, Agent1.agent_id == ScheduleDetail.agent1_id
+    ).filter(
+        ScheduleDetail.is_paired == False, ScheduleDetail.schedule_id == schedule.schedule_id
+    ).all()
+
     schedule_data = {
         "schedule_id": schedule.schedule_id,
         "date": schedule.date.isoformat(),
         "details": [
-            {"agent1_id": detail.agent1_id, "agent2_id": detail.agent2_id}
-            for detail in schedule_details
+            {
+                "agent1_name": f"{agent1_first_name} {agent1_last_name}",
+                "agent2_name": f"{agent2_first_name} {agent2_last_name}"
+            } for _, agent1_first_name, agent1_last_name, agent2_first_name, agent2_last_name in schedule_details        
         ],
+        "unpaired": [
+            {
+                "agent_name": f"{agent1_first_name} {agent1_last_name}",
+            } for _, agent1_first_name, agent1_last_name in unpaired 
+        ]
+
     }
     return jsonify(schedule_data)
 

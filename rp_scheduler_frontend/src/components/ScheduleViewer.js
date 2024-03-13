@@ -30,15 +30,18 @@ function ScheduleViewer() {
   };
 
   const regenerateSchedule = async () => {
-    const formattedDate = currentWeek.toISOString().split('T')[0];
+    const formattedDate = currentWeek.toISOString().split("T")[0];
     try {
-      const response = await fetch(`api/schedule/generate?date=${formattedDate}`, {method: 'POST'});
+      const response = await fetch(
+        `api/schedule/generate?date=${formattedDate}`,
+        { method: "POST" }
+      );
       if (!response.ok) {
-        throw new Error('Error regenerating schedule');
+        throw new Error("Error regenerating schedule");
       }
       fetchSchedule();
     } catch (error) {
-      console.error('Error regenerating schedule:', error)
+      console.error("Error regenerating schedule:", error);
     }
   };
 
@@ -66,32 +69,39 @@ function ScheduleViewer() {
       </button>
       <button onClick={() => handleWeekChange("next")}>Next Week &gt;</button>
       <button onClick={regenerateSchedule}>Regenerate Schedule</button>
-      {
-        schedule ? (
-          <div>
-            <h2>Schedule Details</h2>
-            <table>
-              <thead>
-                <tr>
-                  <th>Agent 1</th>
-                  <th>Agent 2</th>                  
+      {schedule ? (
+        <div>
+          <h2>Schedule Details</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Agent 1</th>
+                <th>Agent 2</th>
+              </tr>
+            </thead>
+            <tbody>
+              {schedule.details.map((meeting, index) => (
+                <tr key={index}>
+                  <td>{meeting.agent1_name}</td>
+                  <td>{meeting.agent2_name}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {schedule.details.map((meeting, index) =>
-                (
-                  <tr key={index}>
-                    <td>{meeting.agent1_id}</td>
-                    <td>{meeting.agent2_id}</td>
-                  </tr>
+              ))}
+            </tbody>
+          </table>
+          {schedule.unpaired && schedule.unpaired.length > 0 && (
+            <div>
+              <h3>Unpaired Agents</h3>
+              <ul>
+                {schedule.unpaired.map((agent, index) => (
+                  <li key={index}>{agent.agent_name}</li>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <p>Loading schedule...</p>
-        )
-      }
+              </ul>
+            </div>
+          )}
+        </div>
+      ) : (
+        <p>Loading schedule...</p>
+      )}
     </div>
   );
 }
