@@ -17,7 +17,6 @@ from flask_login import (
 )
 from werkzeug.security import generate_password_hash, check_password_hash
 from reportlab.pdfgen import canvas
-from io import BytesIO
 from functools import wraps
 from sqlalchemy import or_, and_
 from sqlalchemy.orm import aliased
@@ -180,6 +179,7 @@ def get_agents():
                 "last_name": agent.last_name,
                 "email": agent.email,
                 "phone_number": agent.phone_number,
+                "active_status": agent.active_status
             }
         )
     return jsonify(agents_data)
@@ -496,30 +496,57 @@ def create_schedule(monday_date):
     pq = [(len(partners), agent_id) for agent_id, partners in agent_to_partners.items()]
     heapq.heapify(pq)
 
+    # If performance is an issue, could add some sort of break once all reasonable connections are made
     while pq and unpaired_agents:
+        # Remove the most constrained agent
         constraint, agent_id = heapq.heappop(pq)
+        print("constraint", constraint)
+        print("agent_id", agent_id)
 
-        if agent_id not in unpaired_agents or constraint != len(agent_to_partners[agent_id]):
+        if agent_id not in unpaired_agents:
+            print("Agent is already paired, continueing")
+            continue
+        
+        if constraint != len(agent_to_partners[agent_id]):
+            print("Agent not up to date, continueing")
             continue
 
         for partner_id in list(agent_to_partners[agent_id]):
             if partner_id in unpaired_agents:
+                print("Pairing with", partner_id)
                 selected_pairings.append((agent_id, partner_id))
                 unpaired_agents.remove(agent_id)
                 unpaired_agents.remove(partner_id)
 
-                agent_to_partners[partner_id].remove(agent_id)
-                for other_partner_id in agent_to_partners[partner_id]:
-                    agent_to_partners[other_partner_id].discard(partner_id)
-                    if other_partner_id in unpaired_agents:
-                        heapq.heappush(pq, (len(agent_to_partners[other_partner_id]), other_partner_id))
+                agent_possible_partners = agent_to_partners[agent_id]
+                del agent_to_partners[agent_id]
+                agent_possible_partners.remove(partner_id)
 
-            break
+                partner_possible_partners = agent_to_partners[partner_id]
+                del agent_to_partners[partner_id]
+                partner_possible_partners.remove(agent_id)
+
+                reprocess = set()
+                
+                # Iterate through places our partner is paired with
+                for other_partner_id in partner_possible_partners:
+                    agent_to_partners[other_partner_id].discard(partner_id)
+                    reprocess.add(other_partner_id)
+
+                # Iterate through places our partner is paired with
+                for other_partner_id in agent_possible_partners:
+                    agent_to_partners[other_partner_id].discard(agent_id)
+                    reprocess.add(other_partner_id)
+
+                print("reprocess", reprocess)
+
+                for agent in reprocess:
+                    heapq.heappush(pq, (len(agent_to_partners[agent]), agent))
+                print("pq", pq)
+
+                break
 
     unpaired_agents_list = list(unpaired_agents)
-
-    # selected_pairings_agents = [(Agent.query.get(agent1_id), Agent.query.get(agent2_id)) for agent1_id, agent2_id in selected_pairings]
-    # unpaired_agents_objects = [Agent.query.get(agent_id) for agent_id in unpaired_agents_list]
 
     return selected_pairings, unpaired_agents_list
 

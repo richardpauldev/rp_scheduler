@@ -26,7 +26,7 @@ function Login({ onLogin }) {
                 console.log('Logged in successfully');
                 onLogin(true);
                 localStorage.setItem("isLoggedIn", "true");
-                navigate('/dashboard');
+                navigate('/schedules');
             } else {
                 setError('Invalid username or password');
                 console.error('Failed to login');
