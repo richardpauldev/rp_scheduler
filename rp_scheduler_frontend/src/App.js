@@ -21,7 +21,7 @@ function App() {
 
   return (
     <Router>
-      <div>
+      <div className="app-container">
         <header>
           <div className="container">
             <h1>Scheduling App</h1>
