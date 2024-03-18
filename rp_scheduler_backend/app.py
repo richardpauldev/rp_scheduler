@@ -1,7 +1,7 @@
 import pandas as pd
 import logging
 from logging.handlers import RotatingFileHandler
-from flask import Flask
+from flask import Flask, send_from_directory
 from flask import request, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
@@ -24,14 +24,15 @@ import calendar
 from collections import defaultdict
 import heapq
 import random
+from dotenv import load_dotenv
+import os
 
-# TODO hide database URI
-app = Flask(__name__)
+load_dotenv()
+
+app = Flask(__name__, static_folder='../rp_scheduler_backend/build')
 CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}) # Frontend access
 
-app.config["SQLALCHEMY_DATABASE_URI"] = (
-    "mysql+pymysql://rp_scheduler_user:xn5TjtpJdxJQiqH9AX@localhost/rp_scheduler_db" # DB location
-)
+app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URI")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
@@ -39,7 +40,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = "login"
 
-app.secret_key = "thisissupersecret"
+app.secret_key = os.environ.get("SECRET_KEY")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +48,13 @@ handler = RotatingFileHandler("app.log", maxBytes=10000, backupCount=1)
 handler.setLevel(logging.INFO)
 logger.addHandler(handler)
 
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def server(path):
+    if path != "" and os.path.exists(app.static_folder + '/' + path):
+        return send_from_directory(app.static_folder, path)
+    else:
+        return send_from_directory(app.static_folder, 'index.html')
 
 class User(db.Model, UserMixin):
     __tablename__ = "users"
@@ -700,19 +708,7 @@ def internal_server_error(e):
 
 # Remember to use @login_required when necessary
 if __name__ == "__main__":
-    with app.app_context():
-        print("trying to create db")
-        create_database()
-
-        # Create a test user
-        test_username = "testuser"
-        test_password = "Test1234"  # Choose a secure password
-
-        existing_user = User.query.filter_by(username=test_username).first()
-        if not existing_user:
-            register_user(test_username, test_password)
-            print("Test user created.")
-        else:
-            print("Test user already exists.")
-
-    app.run(debug=True)
+    app.run(use_reloader=True, port=5000, threaded=True)
+else:
+    pass
+    pass
