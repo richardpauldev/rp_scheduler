@@ -23,15 +23,14 @@ from sqlalchemy.orm import aliased
 import calendar
 from collections import defaultdict
 import heapq
+import random
 
 # TODO hide database URI
-
-# TODO Fix issue with Active Status
-
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}})
+CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}) # Frontend access
+
 app.config["SQLALCHEMY_DATABASE_URI"] = (
-    "mysql+pymysql://rp_scheduler_user:xn5TjtpJdxJQiqH9AX@localhost/rp_scheduler_db"
+    "mysql+pymysql://rp_scheduler_user:xn5TjtpJdxJQiqH9AX@localhost/rp_scheduler_db" # DB location
 )
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
@@ -210,14 +209,34 @@ def delete_agent(agent_id):
     agent = Agent.query.get_or_404(agent_id)
     try:
         RecurringAvailability.query.filter_by(agent_id=agent_id).delete()
-
         Availability.query.filter_by(agent_id=agent_id).delete()
 
-        ScheduleDetail.query.filter(
+        # Identify ScheduleDetails where the agent is a part of a pair
+        paired_details = ScheduleDetail.query.filter(
             or_(
                 ScheduleDetail.agent1_id == agent_id,
                 ScheduleDetail.agent2_id == agent_id,
-            )
+            ),
+            ScheduleDetail.is_paired == True
+        ).all()
+
+        # Update ScheduleDetails to unpair and clear the appropriate agent_id
+        for detail in paired_details:
+            if detail.agent1_id != agent_id:
+                # If the deleted agent is agent2, clear agent2 and unpair
+                detail.agent2_id = None
+            else:
+                # If the deleted agent is agent1, move agent2 to agent1, clear agent2, and unpair
+                detail.agent1_id = detail.agent2_id
+                detail.agent2_id = None
+            detail.is_paired = False
+
+        ScheduleDetail.query.filter(
+            db.or_(
+                db.and_(ScheduleDetail.agent1_id == agent_id, ScheduleDetail.agent2_id == None),
+                db.and_(ScheduleDetail.agent2_id == agent_id, ScheduleDetail.agent1_id == None)
+            ),
+            ScheduleDetail.is_paired == False
         ).delete()
 
         Blacklist.query.filter(
@@ -236,7 +255,7 @@ class RecurringAvailability(db.Model):
     __tablename__ = "recurring_availability"
     id = db.Column(db.Integer, primary_key=True)
     agent_id = db.Column(db.Integer, db.ForeignKey("agents.agent_id"))
-    day_of_week = db.Column(db.String(10))
+    day_of_week = db.Column(db.Integer)
     is_available = db.Column(db.Boolean)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(
@@ -450,9 +469,13 @@ def is_agent_available(agent_id, day_name, current_day):
     return False  # Unavailable if both specific and recurring availabilities are None
 
 def create_schedule(monday_date):
-    pairing_delta = relativedelta(weeks=1) # TODO: change back
+    pairing_delta = relativedelta(months=8)
 
     active_agents = Agent.query.filter_by(active_status=True).all()
+
+    if len(active_agents) % 2 == 1:
+        removed_agent = random.choice(active_agents)
+        active_agents.remove(removed_agent)
 
     all_blacklisted_pairs = Blacklist.query.all()
     blacklisted_set = {(bl.agent1_id, bl.agent2_id) for bl in all_blacklisted_pairs}
@@ -500,20 +523,12 @@ def create_schedule(monday_date):
     while pq and unpaired_agents:
         # Remove the most constrained agent
         constraint, agent_id = heapq.heappop(pq)
-        print("constraint", constraint)
-        print("agent_id", agent_id)
 
-        if agent_id not in unpaired_agents:
-            print("Agent is already paired, continueing")
-            continue
-        
-        if constraint != len(agent_to_partners[agent_id]):
-            print("Agent not up to date, continueing")
+        if agent_id not in unpaired_agents or constraint != len(agent_to_partners[agent_id]):
             continue
 
         for partner_id in list(agent_to_partners[agent_id]):
             if partner_id in unpaired_agents:
-                print("Pairing with", partner_id)
                 selected_pairings.append((agent_id, partner_id))
                 unpaired_agents.remove(agent_id)
                 unpaired_agents.remove(partner_id)
@@ -538,15 +553,14 @@ def create_schedule(monday_date):
                     agent_to_partners[other_partner_id].discard(agent_id)
                     reprocess.add(other_partner_id)
 
-                print("reprocess", reprocess)
-
                 for agent in reprocess:
                     heapq.heappush(pq, (len(agent_to_partners[agent]), agent))
-                print("pq", pq)
 
                 break
 
     unpaired_agents_list = list(unpaired_agents)
+    if removed_agent is not None:
+        unpaired_agents_list.append(removed_agent.agent_id)
 
     return selected_pairings, unpaired_agents_list
 
@@ -667,27 +681,6 @@ def get_schedule():
 
     }
     return jsonify(schedule_data)
-
-
-@app.route("/api/data/import", methods=["POST"])
-@login_required
-def import_data():
-    if "file" not in request.files:
-        return jsonify({"message": "No file part"}), 400
-
-    file = request.files["file"]
-    if file.filename == "":
-        return jsonify({"message": "No selected file"}), 400
-
-    if file and allowed_file(file.filename):
-        df = pd.read_excel(file)
-        # TODO logic to process DataFrame and import data into database
-        return jsonify({"message": "Data imported successfully"}), 201
-
-
-def allowed_file(filename):
-    return "." in filename and filename.rsplit(".", 1)[1].lower() in {"xlsx", "xls"}
-
 
 @app.errorhandler(Exception)
 def handle_exception(e):
