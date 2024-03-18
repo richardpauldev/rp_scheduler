@@ -30,7 +30,7 @@ import os
 load_dotenv()
 
 app = Flask(__name__, static_folder='../rp_scheduler_backend/build')
-CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}) # Frontend access
+CORS(app, resources={r"/*": {"origins": "http://scheduler.richardpauldev.com"}}) # Frontend access
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URI")
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
