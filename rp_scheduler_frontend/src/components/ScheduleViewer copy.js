@@ -18,7 +18,6 @@ function ScheduleViewer() {
       const response = await fetch(`/api/schedule/get?date=${formattedDate}`);
       const data = await response.json();
       setSchedule(data);
-      setEditedSchedule({ details: data.details, unpaired: data.unpaired });
     } catch (error) {
       console.error("Error fetching schedule:", error);
     }
@@ -56,62 +55,6 @@ function ScheduleViewer() {
       day: "numeric",
     });
   };
-
-  const handleDragStart = (event, agent, pairIndex, agentIndex) => {
-    event.dataTransfer.setData(
-      "application/json",
-      JSON.stringify({ agent, pairIndex, agentIndex })
-    );
-  };
-
-  const handleDrop = (event, targetPairIndex, targetAgentIndex) => {
-    const draggedData = JSON.parse(event.dataTransfer.getData("application/json"));
-    const { agent: draggedAgent, pairIndex: sourcePairIndex, agentIndex: sourceAgentIndex } = draggedData;
-  
-    // Debugging logs
-    console.log("Dragged Data:", draggedData);
-    console.log("Target Pair Index:", targetPairIndex, "Target Agent Index:", targetAgentIndex);
-    console.log("Source Pair Index:", sourcePairIndex, "Source Agent Index:", sourceAgentIndex);
-    
-
-    if (
-      sourcePairIndex !== targetPairIndex ||
-      sourceAgentIndex !== targetAgentIndex
-    ) {
-      setEditedSchedule((prevSchedule) => {
-        const newDetails = [...prevSchedule.details];
-        const targetAgent = newDetails[targetPairIndex][`agent${targetAgentIndex + 1}_name`];
-
-        if(targetAgent !== draggedAgent) {
-          newDetails[targetPairIndex][`agent${targetAgentIndex + 1}_name`] = draggedAgent;
-          newDetails[sourcePairIndex][`agent${sourceAgentIndex + 1}_name`] = targetAgent;
-        }
-     
-        return { ...prevSchedule, details: newDetails };
-      });
-    }
-  };
-
-  const handleDragOver = (event) => {
-    event.preventDefault();
-  }
-
-  const renderAgent = (agent, pairIndex, agentIndex) => {
-    if (isEditing) {
-      return (
-        <div
-          draggable
-          onDragStart={(event) => handleDragStart(event, agent, pairIndex, agentIndex)}
-          onDrop={(event) => handleDrop(event, pairIndex, agentIndex)}
-          onDragOver={handleDragOver}
-          style={{ cursor: "move" }}
-        >
-          {agent}
-        </div>
-        );
-    }
-    return <div>{agent}</div>
-  }
 
   const saveSchedule = async () => {
     const formattedDate = currentWeek.toISOString().split("T")[0];
@@ -169,10 +112,10 @@ function ScheduleViewer() {
               </tr>
             </thead>
             <tbody>
-              {schedule.details.map((meeting, pairIndex) => (
-                <tr key={pairIndex}>
-                  <td>{renderAgent(meeting.agent1_name, pairIndex, 0)}</td>
-                  <td>{renderAgent(meeting.agent2_name, pairIndex, 1)}</td>
+              {schedule.details.map((meeting, index) => (
+                <tr key={index}>
+                  <td>{meeting.agent1_name}</td>
+                  <td>{meeting.agent2_name}</td>
                 </tr>
               ))}
             </tbody>
