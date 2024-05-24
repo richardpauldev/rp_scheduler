@@ -690,6 +690,88 @@ def get_schedule():
     }
     return jsonify(schedule_data)
 
+@app.route("/api/schedule/set", methods=["POST"]) 
+@login_required
+def set_schedule():
+    data = request.json
+    if not data or "date" not in data or "details" not in data:
+        return jsonify({"error": "Invalid request data"}), 400
+
+    try:
+        date = datetime.strptime(data["date"], "%Y-%m-%d").date()
+    except ValueError:
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
+    
+    details = data["details"]
+    unpaired = data.get("unpaired", [])
+    
+    existing_schedule = Schedule.query.filter_by(date=date).first()
+    if existing_schedule:
+        ScheduleDetail.query.filter_by(schedule_id=existing_schedule.schedule_id).delete()
+        db.session.delete(existing_schedule)
+        db.session.commit()
+
+    new_schedule = Schedule(date=date)
+    db.session.add(new_schedule)
+    db.session.commit()
+
+    def get_agent_id_by_name(name):
+        first_name, last_name = name.split(" ")
+        agent = Agent.query.filter_by(first_name=first_name, last_name=last_name).first()
+        return agent.agent_id if agent else None
+    
+    extra_unpaired = []
+    
+    for detail in details:
+        agent1_name = detail.get("agent1_name")
+        agent2_name = detail.get("agent2_name")
+        if agent1_name and agent2_name:
+            agent1_id = get_agent_id_by_name(agent1_name)
+            agent2_id = get_agent_id_by_name(agent2_name)
+            if agent1_id and agent2_id:
+                new_schedule_detail = ScheduleDetail(
+                    schedule_id=new_schedule.schedule_id,
+                    agent1_id=agent1_id,
+                    agent2_id=agent2_id,
+                    is_paired=True
+                )
+                db.session.add(new_schedule_detail)
+        elif agent1_name and not agent2_name:
+            extra_unpaired.append(agent1_name)
+        elif agent2_name and not agent1_name:
+            extra_unpaired.append(agent2_name)
+    
+    for agent in unpaired:
+        print(agent)
+        agent_name = agent.get("agent_name")
+        print(agent_name)
+        if agent_name:
+            agent_id = get_agent_id_by_name(agent_name)
+            if agent_id:
+                new_schedule_detail = ScheduleDetail(
+                    schedule_id=new_schedule.schedule_id,
+                    agent1_id=agent_id,
+                    is_paired=False
+                )
+                db.session.add(new_schedule_detail)
+
+    for agent in extra_unpaired:
+        agent_name = agent
+        print(agent_name)
+        if agent_name:
+            agent_id = get_agent_id_by_name(agent_name)
+            if agent_id:
+                new_schedule_detail = ScheduleDetail(
+                    schedule_id=new_schedule.schedule_id,
+                    agent1_id=agent_id,
+                    is_paired=False
+                )
+                db.session.add(new_schedule_detail)
+
+    db.session.commit()
+
+    return jsonify({"message": "Schedule set successfully"}), 200
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     logger.error(f"An error occurred: {str(e)}")
@@ -710,5 +792,4 @@ def internal_server_error(e):
 if __name__ == "__main__":
     app.run(use_reloader=True, port=5000, threaded=True)
 else:
-    pass
     pass
