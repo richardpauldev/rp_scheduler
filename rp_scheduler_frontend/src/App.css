@@ -210,6 +210,47 @@ tr:hover {
   cursor: pointer;
 }
 
+/* Draggable Stuff */
+
+.draggable {
+  cursor: move;
+  border: 1px dashed #bbb;
+  padding: 5px;
+  background-color: #f4f4f4;
+  transition: background-color 0.3s, border-color 0.3s;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+.dragging {
+  opacity: 0.5;
+  background-color: #e8e8e8;
+}
+
+.edit-mode .draggable {
+  background-color: #e8e8e8;
+  border-color: #bbb;
+}
+
+.edit-mode .draggable:hover {
+  background-color: #ddd;
+}
+
+.empty-agent {
+  color: #ccc;
+}
+
+.unpaired-list {
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
+}
+
+.unpaired-item {
+  margin: 5px 0;
+}
+
 
 @media screen and (max-width: 768px) {
   .container, header, .main, footer {

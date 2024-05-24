@@ -3,6 +3,8 @@ import React, { useState, useEffect } from "react";
 function ScheduleViewer() {
   const [schedule, setSchedule] = useState(null);
   const [currentWeek, setCurrentWeek] = useState(getMonday(new Date()));
+  const [editedSchedule, setEditedSchedule] = useState({ details: [], unpaired: [] });
+  const [isEditing, setIsEditing] = useState(false);
 
   useEffect(() => {
     // Fetch schedules from the backend
@@ -16,6 +18,8 @@ function ScheduleViewer() {
       const response = await fetch(`/api/schedule/get?date=${formattedDate}`);
       const data = await response.json();
       setSchedule(data);
+      console.log("Ran Fetch Edit")
+      setEditedSchedule({ details: data.details, unpaired: data.unpaired });
     } catch (error) {
       console.error("Error fetching schedule:", error);
     }
@@ -54,6 +58,197 @@ function ScheduleViewer() {
     });
   };
 
+  const handleDragStart = (event, agent, pairIndex, agentIndex, isUnpaired = false) => {
+    event.dataTransfer.setData(
+      "application/json",
+      JSON.stringify({ agent, pairIndex, agentIndex, isUnpaired })
+    );
+  };
+
+  const handleDrop = (event, targetPairIndex, targetAgentIndex) => {
+    event.preventDefault();
+
+    const draggedData = JSON.parse(event.dataTransfer.getData("application/json"));
+    const { agent: draggedAgent, pairIndex: sourcePairIndex, agentIndex: sourceAgentIndex, isUnpaired } = draggedData;
+    // if(isUnpaired && editedSchedule.details[targetPairIndex][`agent${targetAgentIndex + 1}_name`] !== draggedAgent) {
+    //   setEditedSchedule((prevSchedule) => {
+    //     console.log("Checking against", editedSchedule.details[targetPairIndex][`agent${targetAgentIndex + 1}_name`])
+    //     console.log(editedSchedule.details[targetPairIndex][`agent${targetAgentIndex + 1}_name`] === draggedAgent)
+    //     if (editedSchedule.details[targetPairIndex][`agent${targetAgentIndex + 1}_name`] === draggedAgent) {
+    //       // console.log("Skipping")
+    //       const newUnpaired = prevSchedule.unpaired;
+    //       console.log("Details: ", prevSchedule.details, "Skipping: ", newUnpaired)
+    //       newUnpaired.push({ agent_name: "test_name"})
+    //       return { ...prevSchedule, unpaired: newUnpaired };
+    //     } 
+    //     const newDetails = [...prevSchedule.details];
+    //     const newUnpaired = prevSchedule.unpaired.filter(a => a.agent_name !== draggedAgent)
+
+    //     const agentToReplace = newDetails[targetPairIndex][`agent${targetAgentIndex + 1}_name`];
+
+    //     newDetails[targetPairIndex][`agent${targetAgentIndex + 1}_name`] = draggedAgent;
+
+    //     if (agentToReplace && agentToReplace !== draggedAgent) {
+    //       newUnpaired.push({ agent_name: agentToReplace });
+    //       newUnpaired.push({ agent_name: "test_name"})
+    //       const toReturn = { ...prevSchedule, details: newDetails, unpaired: newUnpaired };
+    //       console.log("Dragged agent: ", draggedAgent, "\nUnpaired drop ", toReturn)
+    //       return toReturn;
+    //     } else {
+    //       const toReturn = { ...prevSchedule, details: newDetails};
+    //       console.log("Dragged agent: ", draggedAgent, "\nUnpaired drop ", toReturn)
+    //       return toReturn;
+    //     }
+    //   });
+    if (isUnpaired) {
+      console.log("Dragged Data:", draggedData);
+      setEditedSchedule((prevSchedule) => {
+        const newDetails = [...prevSchedule.details];
+        const newUnpaired = [...prevSchedule.unpaired];
+
+        const currentAgentInTarget = newDetails[targetPairIndex][`agent${targetAgentIndex + 1}_name`];
+
+        console.log("Current Agent in Target:", currentAgentInTarget);
+
+        if (isUnpaired) {
+            if (currentAgentInTarget === draggedAgent) {
+                console.log("Agent already in target, no changes made.");
+                return prevSchedule;
+            }
+
+            newDetails[targetPairIndex][`agent${targetAgentIndex + 1}_name`] = draggedAgent;
+
+            // Remove draggedAgent from unpaired list
+            const updatedUnpaired = newUnpaired.filter(agent => agent.agent_name !== draggedAgent);
+
+            // If there was an agent in the target position, add it to the unpaired list
+            if (currentAgentInTarget && currentAgentInTarget !== draggedAgent) {
+                updatedUnpaired.push({ agent_name: currentAgentInTarget });
+            }
+
+            console.log("Updated Schedule Details:", newDetails);
+            console.log("Updated Unpaired List:", updatedUnpaired);
+
+
+            return {
+                ...prevSchedule,
+                details: newDetails,
+                unpaired: updatedUnpaired,
+            };
+        }
+
+        // If dragging between paired agents or other logic (not provided in original code)
+        // Handle here accordingly
+
+        return prevSchedule;
+      });
+
+    
+    } else if (sourcePairIndex !== targetPairIndex || sourceAgentIndex !== targetAgentIndex) {
+      setEditedSchedule((prevSchedule) => {
+        console.log("paired edit")
+        const newDetails = [...prevSchedule.details];
+        const targetAgent = newDetails[targetPairIndex][`agent${targetAgentIndex + 1}_name`];
+
+        if (targetAgent !== draggedAgent) {
+          newDetails[targetPairIndex][`agent${targetAgentIndex + 1}_name`] = draggedAgent;
+          if (targetAgent) {
+            newDetails[sourcePairIndex][`agent${sourceAgentIndex + 1}_name`] = targetAgent;
+          } else {
+            newDetails[sourcePairIndex][`agent${sourceAgentIndex + 1}_name`] = "";
+          }
+        }
+
+        return { ...prevSchedule, details: newDetails };
+      });
+    }
+  };
+
+  // const [renderCounter, setRenderCounter] = useState(0);
+
+  // useEffect(() => {
+  //     console.log("Rendered with renderCounter:", renderCounter);
+  // }, [renderCounter]);
+
+  // // Force re-render
+  // const forceRender = () => {
+  //     setRenderCounter((prev) => prev + 1);
+  // };
+
+  const handleDropToUnpaired = (event) => {
+    event.preventDefault();
+    const draggedData = JSON.parse(event.dataTransfer.getData("application/json"));
+    const { agent: draggedAgent, pairIndex: sourcePairIndex, agentIndex: sourceAgentIndex, isUnpaired } = draggedData;
+  
+    setEditedSchedule((prevSchedule) => {
+      console.log("drop to unpaired edit")
+      const newUnpaired = [...prevSchedule.unpaired];
+      
+      // Check if the dragged agent's name is already in the unpaired list
+      const isAlreadyUnpaired = newUnpaired.some(agent => agent.agent_name === draggedAgent);
+  
+      if (isUnpaired || isAlreadyUnpaired) {
+        return prevSchedule;
+      }
+      
+      const newDetails = [...prevSchedule.details];
+      newDetails[sourcePairIndex][`agent${sourceAgentIndex + 1}_name`] = "";
+  
+      newUnpaired.push({ agent_name: draggedAgent });
+  
+      return { ...prevSchedule, details: newDetails, unpaired: newUnpaired };
+    });
+  };
+  
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+  };
+
+  const renderAgent = (agent, pairIndex, agentIndex, isUnpaired = false) => {
+    if (isEditing) {
+      if(isUnpaired) {
+        console.log("Rendering: ", agent)
+      }
+      return (
+        <div
+          draggable
+          onDragStart={(event) => handleDragStart(event, agent, pairIndex, agentIndex, isUnpaired)}
+          onDrop={(event) => isUnpaired ? handleDropToUnpaired(event) : handleDrop(event, pairIndex, agentIndex)}
+          onDragOver={handleDragOver}
+          className="draggable agent-cell"
+        >
+          {agent || <span className="empty-agent">Empty</span>}
+        </div>
+      );
+    }
+    return <div className="agent-cell">{agent}</div>;
+  };
+
+  const saveSchedule = async () => {
+    const formattedDate = currentWeek.toISOString().split("T")[0];
+    try {
+      const response = await fetch(`/api/schedule/set`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          date: formattedDate,
+          details: editedSchedule.details,
+          unpaired: editedSchedule.unpaired
+        })
+      });
+      if (!response.ok) {
+        throw new Error("Error saving schedule");
+      }
+      setIsEditing(false);
+      fetchSchedule();
+    } catch (error) {
+      console.error("Error saving schedule:", error);
+    }
+  };
+
   function getMonday(d) {
     d = new Date(d);
     var day = d.getDay(),
@@ -61,14 +256,39 @@ function ScheduleViewer() {
     return new Date(d.setDate(diff));
   }
 
+  const addEmptyRow = () => {
+    console.log("empty log");
+    setEditedSchedule((prevSchedule) => ({
+      
+      ...prevSchedule,
+      details: [
+        ...prevSchedule.details,
+        { agent1_name: "", agent2_name: "" },
+      ],
+    }));
+  };
+
+  useEffect(() => {
+      console.log("Edited Schedule updated:", editedSchedule);
+  }, [editedSchedule]);
+
+
   return (
-    <div>
+    <div className={isEditing ? "edit-mode" : ""}>
       <h1>Schedule for Week of {formatDate(currentWeek)}</h1>
       <button onClick={() => handleWeekChange("prev")}>
         &lt; Previous Week
       </button>
       <button onClick={() => handleWeekChange("next")}>Next Week &gt;</button>
       <button onClick={regenerateSchedule}>Regenerate Schedule</button>
+      {isEditing ? (
+        <>
+          <button onClick={saveSchedule}>Save Schedule</button>
+          <button onClick={addEmptyRow}>Add Empty Row</button>
+        </>
+      ) : (
+        <button onClick={() => setIsEditing(true)}>Edit Schedule</button>
+      )}
       {schedule ? (
         <div>
           <h2>Schedule Details</h2>
@@ -80,20 +300,26 @@ function ScheduleViewer() {
               </tr>
             </thead>
             <tbody>
-              {schedule.details.map((meeting, index) => (
-                <tr key={index}>
-                  <td>{meeting.agent1_name}</td>
-                  <td>{meeting.agent2_name}</td>
+              {editedSchedule.details.map((meeting, pairIndex) => (
+                <tr key={pairIndex}>
+                  <td>{renderAgent(meeting.agent1_name, pairIndex, 0)}</td>
+                  <td>{renderAgent(meeting.agent2_name, pairIndex, 1)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-          {schedule.unpaired && schedule.unpaired.length > 0 && (
+          {editedSchedule.unpaired && editedSchedule.unpaired.length > 0 && (
             <div>
               <h3>Unpaired Agents</h3>
-              <ul>
-                {schedule.unpaired.map((agent, index) => (
-                  <li key={index}>{agent.agent_name}</li>
+              <ul
+                // onDrop={handleDropToUnpaired}
+                // onDragOver={handleDragOver}
+                className="unpaired-list"
+              >
+                {editedSchedule.unpaired.map((agent, index) => (
+                  <li key={agent.agent_name} className="unpaired-item">
+                    {renderAgent(agent.agent_name, null, index, true)}
+                  </li>
                 ))}
               </ul>
             </div>
