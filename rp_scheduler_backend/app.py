@@ -682,52 +682,83 @@ def get_schedule():
     }
     return jsonify(schedule_data)
 
-@app.route("/api/schedule/set", methods=["POST"])
+@app.route("/api/schedule/set", methods=["POST"]) 
 @login_required
 def set_schedule():
     data = request.json
-    if not data or "date" in data or "details" not in data:
+    if not data or "date" not in data or "details" not in data:
         return jsonify({"error": "Invalid request data"}), 400
 
     try:
-        date = datetime.strptime(data["data"], "%Y-%m-%d").date()
+        date = datetime.strptime(data["date"], "%Y-%m-%d").date()
     except ValueError:
         return jsonify({"error": "Invalid date format. Use YYYY-MM-DD."}), 400
     
     details = data["details"]
     unpaired = data.get("unpaired", [])
-
+    
     existing_schedule = Schedule.query.filter_by(date=date).first()
     if existing_schedule:
         ScheduleDetail.query.filter_by(schedule_id=existing_schedule.schedule_id).delete()
         db.session.delete(existing_schedule)
         db.session.commit()
 
-    new_schedule = Schedule(data=date)
+    new_schedule = Schedule(date=date)
     db.session.add(new_schedule)
     db.session.commit()
 
+    def get_agent_id_by_name(name):
+        first_name, last_name = name.split(" ")
+        agent = Agent.query.filter_by(first_name=first_name, last_name=last_name).first()
+        return agent.agent_id if agent else None
+    
+    extra_unpaired = []
+    
     for detail in details:
-        agent1_id = detail.get("agent1_id")
-        agent2_id = detail.get("agent2_id")
-        if agent1_id and agent2_id:
-            new_schedule_detail = ScheduleDetail(
-                schedule_id=new_schedule.schedule_id,
-                agent1_id=agent1_id,
-                agent2_id=agent2_id,
-                is_paired=True
-            )
-            db.session.add(new_schedule_detail)
+        agent1_name = detail.get("agent1_name")
+        agent2_name = detail.get("agent2_name")
+        if agent1_name and agent2_name:
+            agent1_id = get_agent_id_by_name(agent1_name)
+            agent2_id = get_agent_id_by_name(agent2_name)
+            if agent1_id and agent2_id:
+                new_schedule_detail = ScheduleDetail(
+                    schedule_id=new_schedule.schedule_id,
+                    agent1_id=agent1_id,
+                    agent2_id=agent2_id,
+                    is_paired=True
+                )
+                db.session.add(new_schedule_detail)
+        elif agent1_name and not agent2_name:
+            extra_unpaired.append(agent1_name)
+        elif agent2_name and not agent1_name:
+            extra_unpaired.append(agent2_name)
     
     for agent in unpaired:
-        agent_id = agent.get("agent1_id")
-        if agent_id:
-            new_schedule_detail = ScheduleDetail(
-                schedule_id=new_schedule.schedule_id,
-                agent1_id=agent_id,
-                is_paired=False
-            )
-            db.session.add(new_schedule_detail)
+        print(agent)
+        agent_name = agent.get("agent_name")
+        print(agent_name)
+        if agent_name:
+            agent_id = get_agent_id_by_name(agent_name)
+            if agent_id:
+                new_schedule_detail = ScheduleDetail(
+                    schedule_id=new_schedule.schedule_id,
+                    agent1_id=agent_id,
+                    is_paired=False
+                )
+                db.session.add(new_schedule_detail)
+
+    for agent in extra_unpaired:
+        agent_name = agent
+        print(agent_name)
+        if agent_name:
+            agent_id = get_agent_id_by_name(agent_name)
+            if agent_id:
+                new_schedule_detail = ScheduleDetail(
+                    schedule_id=new_schedule.schedule_id,
+                    agent1_id=agent_id,
+                    is_paired=False
+                )
+                db.session.add(new_schedule_detail)
 
     db.session.commit()
 
