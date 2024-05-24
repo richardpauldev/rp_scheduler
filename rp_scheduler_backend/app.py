@@ -29,7 +29,7 @@ import os
 
 load_dotenv()
 
-app = Flask(__name__, static_folder='../rp_scheduler_backend/build')
+app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://scheduler.richardpauldev.com"}}) # Frontend access
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URI")
@@ -47,14 +47,6 @@ logger = logging.getLogger(__name__)
 handler = RotatingFileHandler("app.log", maxBytes=10000, backupCount=1)
 handler.setLevel(logging.INFO)
 logger.addHandler(handler)
-
-@app.route('/', defaults={'path': ''})
-@app.route('/<path:path>')
-def server(path):
-    if path != "" and os.path.exists(app.static_folder + '/' + path):
-        return send_from_directory(app.static_folder, path)
-    else:
-        return send_from_directory(app.static_folder, 'index.html')
 
 class User(db.Model, UserMixin):
     __tablename__ = "users"
@@ -98,7 +90,7 @@ def register_user(username, password):
     db.session.commit()
 
 
-@app.route("/api/login", methods=["POST"])
+@app.route("/login", methods=["POST"])
 def login():
     logger.info("Received Login Request")
 
@@ -117,7 +109,7 @@ def login():
         return jsonify({"error": "Invalid username or password"}), 401
 
 
-@app.route("/api/logout")
+@app.route("/logout")
 @login_required
 def logout():
     logout_user()
@@ -141,7 +133,7 @@ class Agent(db.Model):
     )
 
 
-@app.route("/api/agents/create", methods=["POST"])
+@app.route("/agents/create", methods=["POST"])
 @login_required
 def create_agent():
     try:
@@ -164,7 +156,7 @@ def create_agent():
         return jsonify({"message": "Failed to create agent"}), 500
 
 
-@app.route("/api/agents/get", methods=["GET"])
+@app.route("/agents/get", methods=["GET"])
 @login_required
 def get_agents():
     agents = Agent.query
@@ -192,7 +184,7 @@ def get_agents():
     return jsonify(agents_data)
 
 
-@app.route("/api/agents/update/<int:agent_id>", methods=["PUT"])
+@app.route("/agents/update/<int:agent_id>", methods=["PUT"])
 @login_required
 def update_agent(agent_id):
     agent = Agent.query.get_or_404(agent_id)
@@ -211,7 +203,7 @@ def update_agent(agent_id):
         return jsonify({"message": "Failed to update agent"}), 500
 
 
-@app.route("/api/agents/delete/<int:agent_id>", methods=["DELETE"])
+@app.route("/agents/delete/<int:agent_id>", methods=["DELETE"])
 @login_required
 def delete_agent(agent_id):
     agent = Agent.query.get_or_404(agent_id)
@@ -283,7 +275,7 @@ class Availability(db.Model):
     )
 
 
-@app.route("/api/agents/<int:agent_id>/availability", methods=["GET"])
+@app.route("/agents/<int:agent_id>/availability", methods=["GET"])
 @login_required
 def get_agent_availability(agent_id):
     try:
@@ -319,7 +311,7 @@ def get_agent_availability(agent_id):
         return jsonify({"message": "Failed to fetch availability data"}), 500
 
 
-@app.route("/api/agents/availability/update/<int:agent_id>", methods=["PUT"])
+@app.route("/agents/availability/update/<int:agent_id>", methods=["PUT"])
 @login_required
 def update_availability(agent_id):
     try:
@@ -370,7 +362,7 @@ class Blacklist(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-@app.route("/api/agents/blacklist/get/<int:agent_id>", methods=["GET"])
+@app.route("/agents/blacklist/get/<int:agent_id>", methods=["GET"])
 @login_required
 def get_blacklist_for_agent(agent_id):
     try:
@@ -391,7 +383,7 @@ def get_blacklist_for_agent(agent_id):
         return jsonify({"message": "Failed to retrieve blacklist"}), 500
 
 
-@app.route("/api/agents/blacklist/update/<int:agent_id>", methods=["PUT"])
+@app.route("/agents/blacklist/update/<int:agent_id>", methods=["PUT"])
 @login_required
 def update_blacklist(agent_id):
     try:
@@ -610,7 +602,7 @@ def generate_schedule_func(monday_date):
     db.session.commit()
 
 
-@app.route("/api/schedule/generate", methods=["POST"])
+@app.route("/schedule/generate", methods=["POST"])
 @login_required
 def generate_schedule():
     date_str = request.args.get("date")  # Getting the date from query parameter
@@ -624,7 +616,7 @@ def generate_schedule():
     return jsonify({"message": "Schedule generated"}), 201
 
 
-@app.route("/api/schedule/get", methods=["GET"])
+@app.route("/schedule/get", methods=["GET"])
 @login_required
 def get_schedule():
     date_str = request.args.get("date")  # Getting the date from query parameter
@@ -707,8 +699,5 @@ def internal_server_error(e):
 
 
 # Remember to use @login_required when necessary
-if __name__ == "__main__":
-    app.run(use_reloader=True, port=5000, threaded=True)
-else:
-    pass
+if __name__ != "__main__":
     pass
