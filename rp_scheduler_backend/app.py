@@ -82,7 +82,7 @@ def create_database():
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-
+@login_required
 def register_user(username, password):
     hashed_password = generate_password_hash(password)
     new_user = User(username=username, password_hash=hashed_password)
