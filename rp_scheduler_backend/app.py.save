@@ -682,7 +682,7 @@ def get_schedule():
     }
     return jsonify(schedule_data)
 
-@app.route("/schedule/set", methods=["POST"]) 
+@app.route("/api/schedule/set", methods=["POST"]) 
 @login_required
 def set_schedule():
     data = request.json
