@@ -473,6 +473,7 @@ def create_schedule(monday_date):
 
     active_agents = Agent.query.filter_by(active_status=True).all()
 
+    removed_agent = None
     if len(active_agents) % 2 == 1:
         removed_agent = random.choice(active_agents)
         active_agents.remove(removed_agent)
