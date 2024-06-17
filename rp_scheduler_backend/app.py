@@ -296,7 +296,7 @@ def get_agent_availability(agent_id):
         specific_dates = Availability.query.filter_by(agent_id=agent_id).all()
         specific_dates_data = defaultdict(list)
         for av in specific_dates:
-            year_month_key = f"{av.date.year}-{av.date.month}"
+            year_month_key = f"{av.date.year}-{av.date.month-1}"
             specific_dates_data[year_month_key].append(av.date.day)
 
         return jsonify(
@@ -332,7 +332,7 @@ def update_availability(agent_id):
         for year_month, days in data["specificDates"].items():
             year, month = map(int, year_month.split("-"))
             for day in days:
-                date = datetime(year, month, day).date()
+                date = datetime(year, month + 1, day).date()
 
                 weekday = date.weekday()
                 usual_availability = RecurringAvailability.query.filter_by(
