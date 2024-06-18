@@ -28,7 +28,7 @@ function AgentList() {
 
   const handleResponse = (response) => {
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`HTTP error! status: ${response.status}. You may need to login again.`);
     }
     return response.json();
   };

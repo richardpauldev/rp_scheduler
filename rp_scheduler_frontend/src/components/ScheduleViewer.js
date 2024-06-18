@@ -16,11 +16,14 @@ function ScheduleViewer() {
 
     try {
       const response = await fetch(`/api/schedule/get?date=${formattedDate}`);
+      if(!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}. You may need to login again.`);
+      }
       const data = await response.json();
       setSchedule(data);
       setEditedSchedule({ details: data.details, unpaired: data.unpaired });
     } catch (error) {
-      console.error("Error fetching schedule:", error);
+      console.error("Error fetching schedule: ", error);
     }
   };
 
@@ -340,7 +343,7 @@ function ScheduleViewer() {
           )}
         </div>
       ) : (
-        <p>Loading schedule...</p>
+        <p>Loading schedule. If this doesn't load, you may need to login again. </p>
       )}
     </div>
   );
