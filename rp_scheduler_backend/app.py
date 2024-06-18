@@ -31,8 +31,11 @@ load_dotenv()
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "http://scheduler.richardpauldev.com"}}) # Frontend access
+# CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}) # Frontend access
+
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URI")
+print(os.environ.get("DATABASE_URI"))
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
@@ -43,11 +46,14 @@ login_manager.login_view = "login"
 app.secret_key = os.environ.get("SECRET_KEY")
 
 logging.basicConfig(level=logging.INFO)
+# logging.basicConfig(level=logging.DEBUG)
+
 logger = logging.getLogger(__name__)
 handler = RotatingFileHandler("app.log", maxBytes=10000, backupCount=1)
 handler.setLevel(logging.INFO)
 logger.addHandler(handler)
 
+# Remeber to add or remove /ap i/ (api is there for testing, not for production)
 class User(db.Model, UserMixin):
     __tablename__ = "users"
     user_id = db.Column(db.Integer, primary_key=True)
@@ -82,7 +88,6 @@ def create_database():
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-@login_required
 def register_user(username, password):
     hashed_password = generate_password_hash(password)
     new_user = User(username=username, password_hash=hashed_password)
@@ -334,7 +339,7 @@ def update_availability(agent_id):
             for day in days:
                 date = datetime(year, month + 1, day).date()
 
-                weekday = date.weekday()
+                weekday = (date.weekday() + 1) % 7
                 usual_availability = RecurringAvailability.query.filter_by(
                     agent_id=agent_id, day_of_week=str(weekday)
                 ).first()
@@ -453,33 +458,55 @@ class ScheduleDetail(db.Model):
         db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow
     )
 
-def is_agent_available(agent_id, day_name, current_day):
+    # For day number, Sunday is 0, Saturday is 6
+def is_agent_available(agent_id, day_number, current_day):
+    logging.debug(f"Checking availability for agent {agent_id} on {current_day} ({day_number})")
     specific_avail = Availability.query.filter_by(
         agent_id=agent_id, date=current_day
     ).first()
     if specific_avail is not None:
+        logging.debug(f"Specific availability found: {specific_avail.is_available}")
         return specific_avail.is_available
 
     recurring_avail = RecurringAvailability.query.filter_by(
-        agent_id=agent_id, day_of_week=day_name
+        agent_id=agent_id, day_of_week=day_number
     ).first()
     if recurring_avail is not None:
+        logging.debug(f"Recurring availability found: {recurring_avail.is_available}")
         return recurring_avail.is_available
 
+    logging.debug("No availability found")
     return False  # Unavailable if both specific and recurring availabilities are None
 
 def create_schedule(monday_date):
+    logging.debug(f"Creating schedule for week starting on {monday_date}")
     pairing_delta = relativedelta(months=8)
 
     active_agents = Agent.query.filter_by(active_status=True).all()
+    logging.debug(f"Active agents: {len(active_agents)}")
+
+    week_availability = defaultdict(lambda: defaultdict(bool))
+    for agent in active_agents:
+        for day_offset in range(7):
+            current_day = monday_date + timedelta(days=day_offset)
+            is_available = is_agent_available(agent.agent_id, 0 if day_offset == 6 else day_offset + 1, current_day)
+            week_availability[agent.agent_id][day_offset] = is_available
+    
+    unavailable_agents = [agent for agent in active_agents if not any(week_availability[agent.agent_id][day_offset] for day_offset in range(7))]
+    logging.debug(f"Unavailable agents: {len(unavailable_agents)}")
+
+    active_agents = [agent for agent in active_agents if any(week_availability[agent.agent_id][day_offset] for day_offset in range(7))]
+    logging.debug(f"Filtered active agents: {len(active_agents)}")
 
     removed_agent = None
     if len(active_agents) % 2 == 1:
         removed_agent = random.choice(active_agents)
+        logging.debug(f"Removing agent {removed_agent.agent_id} to make even pairs")
         active_agents.remove(removed_agent)
 
     all_blacklisted_pairs = Blacklist.query.all()
     blacklisted_set = {(bl.agent1_id, bl.agent2_id) for bl in all_blacklisted_pairs}
+    logging.debug(f"Blacklisted pairs: {blacklisted_set}")
 
     past_pairings = (
         db.session.query(ScheduleDetail.agent1_id, ScheduleDetail.agent2_id)
@@ -487,27 +514,24 @@ def create_schedule(monday_date):
         .filter(ScheduleDetail.is_paired, Schedule.date > monday_date - pairing_delta, Schedule.date < monday_date + pairing_delta)
         .all()
     )
-
     past_pairings_set = {(pp.agent1_id, pp.agent2_id) for pp in past_pairings}
-
-    week_availability = defaultdict(lambda: defaultdict(bool))
-    for agent in active_agents:
-        for day_offset in range(7):
-            current_day = monday_date + timedelta(days=day_offset)
-            is_available = is_agent_available(agent.agent_id, day_offset, current_day)
-            week_availability[agent.agent_id][day_offset] = is_available
+    logging.debug(f"Past pairings: {past_pairings_set}")
 
     available_pairings = []
     for i, agent1 in enumerate(active_agents):
         for agent2 in active_agents[i + 1 :]:
             if (agent1.agent_id, agent2.agent_id) in blacklisted_set or (agent1.agent_id, agent2.agent_id) in blacklisted_set:
+                logging.debug(f"Skipping blacklisted pair: {agent1.agent_id}, {agent2.agent_id}")
                 continue
 
             if (agent1.agent_id, agent2.agent_id) in past_pairings_set or (agent2.agent_id, agent1.agent_id) in past_pairings_set:
+                logging.debug(f"Skipping past paired agents: {agent1.agent_id}, {agent2.agent_id}")
                 continue
 
             if any(week_availability[agent1.agent_id][day_offset] and week_availability[agent2.agent_id][day_offset] for day_offset in range(7)):
                 available_pairings.append((agent1, agent2))
+
+    logging.debug(f"Available pairings: {[(a1.agent_id, a2.agent_id) for a1, a2 in available_pairings]}")
 
     selected_pairings = []
     unpaired_agents = set(agent.agent_id for agent in active_agents)
@@ -530,6 +554,7 @@ def create_schedule(monday_date):
 
         for partner_id in list(agent_to_partners[agent_id]):
             if partner_id in unpaired_agents:
+                logging.debug(f"Pairing agents: {agent_id}, {partner_id}")
                 selected_pairings.append((agent_id, partner_id))
                 unpaired_agents.remove(agent_id)
                 unpaired_agents.remove(partner_id)
@@ -563,13 +588,20 @@ def create_schedule(monday_date):
     if removed_agent is not None:
         unpaired_agents_list.append(removed_agent.agent_id)
 
+    unpaired_agents_list.extend(agent.agent_id for agent in unavailable_agents)
+
+    logging.debug(f"Selected pairings: {selected_pairings}")
+    logging.debug(f"Unpaired agents: {unpaired_agents_list}")
+
     return selected_pairings, unpaired_agents_list
 
 
 def generate_schedule_func(monday_date):
     # Check if a schedule already exists for this date and delete it if so
+    logging.debug(f"Generating schedule for {monday_date}")
     existing_schedule = Schedule.query.filter_by(date=monday_date).first()
     if existing_schedule:
+        logging.debug(f"Deleting existing schedule for {monday_date}")
         ScheduleDetail.query.filter_by(
             schedule_id=existing_schedule.schedule_id
         ).delete()
@@ -583,6 +615,7 @@ def generate_schedule_func(monday_date):
         db.session.commit()
 
         for agent1_id, agent2_id in agent_pairings:
+            logging.debug(f"Adding paired agents: {agent1_id}, {agent2_id}")
             schedule_detail = ScheduleDetail(
                 schedule_id=schedule.schedule_id,
                 agent1_id=agent1_id,
@@ -593,6 +626,7 @@ def generate_schedule_func(monday_date):
 
     if unpaired_agents:
         for agent_id in unpaired_agents:
+            logging.debug(f"Adding unpaired agent: {agent_id}")
             schedule_detail = ScheduleDetail(
                 schedule_id=schedule.schedule_id,
                 agent1_id=agent_id,
@@ -781,6 +815,6 @@ def internal_server_error(e):
     return jsonify({"message": "Internal server error"}), 500
 
 
-if __name__ != "__main__":
+if __name__ == "__main__":
     app.run(debug=True)
 # register_user("Irene", "StardewValley")
