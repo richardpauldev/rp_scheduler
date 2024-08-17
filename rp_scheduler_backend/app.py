@@ -763,6 +763,11 @@ def set_schedule():
                     is_paired=True
                 )
                 db.session.add(new_schedule_detail)
+            else:
+                if not agent1_id:
+                    logger.error(f"Could not process given agent name {agent1_name}")
+                if not agent1_id:
+                    logger.error(f"Could not process given agent name {agent2_name}")
         elif agent1_name and not agent2_name:
             extra_unpaired.append(agent1_name)
         elif agent2_name and not agent1_name:
