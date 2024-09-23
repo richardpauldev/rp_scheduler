@@ -26,6 +26,8 @@ function AgentList() {
   });
   const [editingAgent, setEditingAgent] = useState(null);
 
+  const [formErrors, setFormErrors] = useState({});
+
   const handleResponse = (response) => {
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}. You may need to login again.`);
@@ -67,6 +69,18 @@ function AgentList() {
 
   const handleFormChange = (event) => {
     const { name, value, type, checked } = event.target;
+
+    if ((name === 'first_name' || name === 'last_name') && /\s/.test(value)) {
+      setFormErrors((prevErrors) => ({
+        ...prevErrors,
+        [name]: 'Names cannot contain spaces.'
+      }));
+    } else {
+      setFormErrors((prevErrors) => ({
+        ...prevErrors,
+        [name]: '',
+      }));
+    }
     setNewAgent((prevState) => ({
       ...prevState,
       [name]: type === "checkbox" ? checked : value,
@@ -117,13 +131,32 @@ function AgentList() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
+    // Prevent submission if there are form errors
+    if (Object.values(formErrors).some(error => error)) {
+      alert('Please fix errors before submitting.');
+      return;
+    }
+
+    // Final check for whitespace in first_name and last_name
+    if (/\s/.test(newAgent.first_name) || /\s/.test(newAgent.last_name)) {
+      alert('First name and last name cannot contain whitespace characters.');
+      return;
+    }
+
     const agentDetails = {
       first_name: newAgent.first_name,
       last_name: newAgent.last_name,
-      email: newAgent.email,
-      phone_number: newAgent.phone_number,
       active_status: newAgent.active_status,
     };
+
+    if (newAgent.email) {
+      agentDetails.email = newAgent.email;
+    }
+
+    if (newAgent.phone_number) {
+      agentDetails.phone_number = newAgent.phone_number;
+    }
 
     console.log("Exception Days:", newAgent.exceptionDays)
     const availability = {
@@ -167,6 +200,7 @@ function AgentList() {
     }); // Reset the form fields
     setAgentSearch('');
     setBlacklist([]);
+    setFormErrors({});
   };
 
   const handleDelete = (agentId) => {
@@ -301,6 +335,7 @@ function AgentList() {
                 value={newAgent.first_name}
                 required
               />
+              {formErrors.first_name && <div className="error">{formErrors.first_name}</div>}
               <input
                 type="text"
                 name="last_name"
@@ -309,13 +344,13 @@ function AgentList() {
                 value={newAgent.last_name}
                 required
               />
+              {formErrors.last_name && <div className="error">{formErrors.last_name}</div>}
               <input
                 type="email"
                 name="email"
                 placeholder="Email"
                 onChange={handleFormChange}
                 value={newAgent.email}
-                required
               />
               <input
                 type="text"
@@ -397,8 +432,8 @@ function AgentList() {
             <tr key={agent.agent_id}>
               <td>{agent.first_name}</td>
               <td>{agent.last_name}</td>
-              <td>{agent.email}</td>
-              <td>{agent.phone_number}</td>
+              <td>{agent.email|| 'N/A'}</td>
+              <td>{agent.phone_number || 'N/A'}</td>
               <td>{agent.active_status ? "Active" : "Inactive"}</td>
               <td>
                 <button onClick={() => handleEdit(agent.agent_id)}>

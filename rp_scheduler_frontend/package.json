@@ -12,6 +12,7 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.21.1",
     "react-scripts": "^5.0.1",
+    "rp_scheduler_frontend": "file:",
     "web-vitals": "^2.1.4"
   },
   "scripts": {

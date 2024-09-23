@@ -158,8 +158,11 @@ function CalendarComponent({ agentId, onDayToggle }) {
       }
     };
 
-    if (agentId >= 0)
+    if (agentId >= 0) {
       fetchAgentAvailability(agentId);
+    } else {
+      setSelectedWeekdays(new Set([1,2,3,4,5]));
+    }
   }, [agentId]);
 
   return (

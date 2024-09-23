@@ -135,7 +135,7 @@ class Agent(db.Model):
     agent_id = db.Column(db.Integer, primary_key=True)
     first_name = db.Column(db.String(255))
     last_name = db.Column(db.String(255))
-    email = db.Column(db.String(255), unique=True)
+    email = db.Column(db.String(255))
     phone_number = db.Column(db.String(255))
     active_status = db.Column(db.Boolean)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -149,12 +149,27 @@ class Agent(db.Model):
 def create_agent():
     try:
         data = request.json
+
+        first_name = data.get("first_name")
+        last_name = data.get("last_name")
+        if not first_name or not last_name:
+            return jsonify({"message": "First name and last name are required"}), 400
+        if any(char.isspace() for char in first_name):
+            return jsonify({"message": "First name cannot contain whitespace characters"}), 400
+        if any(char.isspace() for char in last_name):
+            return jsonify({"message": "Last name cannot contain whitespace characters"}), 400
+
+
+        existing_agent = Agent.query.filter_by(first_name=first_name, last_name=last_name).first()
+        if existing_agent:
+            return jsonify({"message": "An agent with the same first and last name already exists"}), 400
+        
         new_agent = Agent(
-            first_name=data["first_name"],
-            last_name=data["last_name"],
-            email=data["email"],
-            phone_number=data["phone_number"],
-            active_status=data["active_status"],
+            first_name=first_name,
+            last_name=last_name,
+            email=data.get("email"),
+            phone_number=data.get("phone_number"),
+            active_status=data.get("active_status"),
         )
         db.session.add(new_agent)
         db.session.flush()
@@ -174,11 +189,11 @@ def get_agents():
     search = request.args.get("search")
     if search:
         agents = agents.filter(
-            (Agent.first_name.like(f"%{search}%"))
-            | (Agent.last_name.like(f"%{search}%"))
-            | (Agent.email.like(f"%{search}%"))
+            (Agent.first_name.ilike(f"%{search}%"))
+            | (Agent.last_name.ilike(f"%{search}%"))
+            | ((Agent.email != None) & (Agent.email.ilike(f"%{search}%")))
         )
-    agents = agents.all()
+    agents = agents.order_by(Agent.last_name.asc(), Agent.first_name.asc()).all()
 
     agents_data = []
     for agent in agents:
@@ -201,8 +216,29 @@ def update_agent(agent_id):
     agent = Agent.query.get_or_404(agent_id)
     try:
         data = request.json
-        agent.first_name = data.get("first_name", agent.first_name)
-        agent.last_name = data.get("last_name", agent.last_name)
+
+        new_first_name = data.get("first_name", agent.first_name)
+        new_last_name = data.get("last_name", agent.last_name)
+
+        if not new_first_name or not new_last_name:
+            return jsonify({"message": "First name and last name are required"}), 400
+
+        if any(char.isspace() for char in new_first_name):
+            return jsonify({"message": "First name cannot contain whitespace characters"}), 400
+        if any(char.isspace() for char in new_last_name):
+            return jsonify({"message": "Last name cannot contain whitespace characters"}), 400
+
+        # Check for existing agent with the same first and last name (excluding current agent)
+        existing_agent = Agent.query.filter(
+            Agent.first_name == new_first_name,
+            Agent.last_name == new_last_name,
+            Agent.agent_id != agent_id
+        ).first()
+        if existing_agent:
+            return jsonify({"message": "An agent with the same first and last name already exists"}), 400
+
+        agent.first_name = new_first_name
+        agent.last_name = new_last_name
         agent.email = data.get("email", agent.email)
         agent.phone_number = data.get("phone_number", agent.phone_number)
         agent.active_status = data.get("active_status", agent.active_status)
@@ -486,7 +522,7 @@ def is_agent_available(agent_id, day_number, current_day):
 
 def create_schedule(monday_date):
     logging.debug(f"Creating schedule for week starting on {monday_date}")
-    pairing_delta = relativedelta(months=8)
+    pairing_delta = relativedelta(months=6)
 
     active_agents = Agent.query.filter_by(active_status=True).all()
     logging.debug(f"Active agents: {len(active_agents)}")
@@ -695,31 +731,53 @@ def get_schedule():
         ScheduleDetail.is_paired, ScheduleDetail.schedule_id == schedule.schedule_id
     ).all()
 
-    unpaired = db.session.query(
-        ScheduleDetail,
-        Agent1.first_name.label("agent1_first_name"),
-        Agent1.last_name.label("agent1_last_name")
-    ).join(
-        Agent1, Agent1.agent_id == ScheduleDetail.agent1_id
-    ).filter(
-        ScheduleDetail.is_paired == False, ScheduleDetail.schedule_id == schedule.schedule_id
-    ).all()
+    def agent_sort_key(first_name, last_name):
+        return (last_name.lower(), first_name.lower())
+    details = []
+    unpaired_agents = []
+    for detail, agent1_first_name, agent1_last_name, agent2_first_name, agent2_last_name in schedule_details:
+        agent1_name = f"{agent1_first_name} {agent1_last_name}"
+        if detail.is_paired and agent2_first_name and agent2_last_name:
+            agent2_name = f"{agent2_first_name} {agent2_last_name}"
+            agent1_key = agent_sort_key(agent1_first_name, agent1_last_name)
+            agent2_key = agent_sort_key(agent2_first_name, agent2_last_name)
+            if agent1_key < agent2_key:
+                first_agent_name = agent1_name
+                second_agent_name = agent2_name
+                first_agent_last_name = agent1_last_name
+            else:
+                first_agent_name = agent2_name
+                second_agent_name = agent1_name
+                first_agent_last_name = agent2_last_name
+            details.append({
+                "agent1_name": first_agent_name,
+                "agent2_name": second_agent_name,
+                "first_agent_last_name": first_agent_last_name
+            })
+        else:
+            unpaired_agents.append({
+                "agent_name": agent1_name,
+                "agent_last_name": agent1_last_name
+            })
+
+    details.sort(key=lambda x: x['first_agent_last_name'].lower())
+
+    unpaired_agents.sort(key=lambda x: x['agent_last_name'].lower())
 
     schedule_data = {
         "schedule_id": schedule.schedule_id,
         "date": schedule.date.isoformat(),
         "details": [
             {
-                "agent1_name": f"{agent1_first_name} {agent1_last_name}",
-                "agent2_name": f"{agent2_first_name} {agent2_last_name}"
-            } for _, agent1_first_name, agent1_last_name, agent2_first_name, agent2_last_name in schedule_details        
+                "agent1_name": detail['agent1_name'],
+                "agent2_name": detail['agent2_name']
+            } for detail in details        
         ],
         "unpaired": [
             {
-                "agent_name": f"{agent1_first_name} {agent1_last_name}",
-            } for _, agent1_first_name, agent1_last_name in unpaired 
+                "agent_name": agent['agent_name'],
+            } for agent in unpaired_agents
         ]
-
     }
     return jsonify(schedule_data)
 
@@ -828,4 +886,3 @@ def internal_server_error(e):
 
 if __name__ == "__main__":
     app.run(debug=True)
-# register_user("Irene", "StardewValley")
