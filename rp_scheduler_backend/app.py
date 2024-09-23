@@ -27,15 +27,18 @@ import random
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
+if os.environ.get("FLASK_ENV") == "development":
+    load_dotenv()
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "http://scheduler.richardpauldev.com"}}) # Frontend access
-# CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}) # Frontend access
+
+if os.environ.get("FLASK_ENV") == "development":
+    CORS(app, resources={r"/*": {"origins": "http://localhost:3000"}}) # Frontend access
+else:
+    CORS(app, resources={r"/*": {"origins": "http://scheduler.richardpauldev.com"}}) # Frontend access
 
 
 app.config["SQLALCHEMY_DATABASE_URI"] = os.environ.get("DATABASE_URI")
-print(os.environ.get("DATABASE_URI"))
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
@@ -45,15 +48,18 @@ login_manager.login_view = "login"
 
 app.secret_key = os.environ.get("SECRET_KEY")
 
-logging.basicConfig(level=logging.INFO)
-# logging.basicConfig(level=logging.DEBUG)
+if os.environ.get("FLASK_ENV") == "development":
+    logging.basicConfig(level=logging.DEBUG)
+else:
+    logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 handler = RotatingFileHandler("app.log", maxBytes=10000, backupCount=1)
 handler.setLevel(logging.INFO)
 logger.addHandler(handler)
 
-# Remeber to add or remove /ap i/ (api is there for testing, not for production)
+#TODO Modify NGINX so it serves to /api/ (doesn't remove)
+# OLD: Remeber to add or remove /ap i/ (api is there for testing, not for production)
 class User(db.Model, UserMixin):
     __tablename__ = "users"
     user_id = db.Column(db.Integer, primary_key=True)
@@ -95,7 +101,7 @@ def register_user(username, password):
     db.session.commit()
 
 
-@app.route("/login", methods=["POST"])
+@app.route("/api/login", methods=["POST"])
 def login():
     logger.info("Received Login Request")
 
@@ -114,7 +120,7 @@ def login():
         return jsonify({"error": "Invalid username or password"}), 401
 
 
-@app.route("/logout")
+@app.route("/api/logout")
 @login_required
 def logout():
     logout_user()
@@ -138,7 +144,7 @@ class Agent(db.Model):
     )
 
 
-@app.route("/agents/create", methods=["POST"])
+@app.route("/api/agents/create", methods=["POST"])
 @login_required
 def create_agent():
     try:
@@ -161,7 +167,7 @@ def create_agent():
         return jsonify({"message": "Failed to create agent"}), 500
 
 
-@app.route("/agents/get", methods=["GET"])
+@app.route("/api/agents/get", methods=["GET"])
 @login_required
 def get_agents():
     agents = Agent.query
@@ -189,7 +195,7 @@ def get_agents():
     return jsonify(agents_data)
 
 
-@app.route("/agents/update/<int:agent_id>", methods=["PUT"])
+@app.route("/api/agents/update/<int:agent_id>", methods=["PUT"])
 @login_required
 def update_agent(agent_id):
     agent = Agent.query.get_or_404(agent_id)
@@ -208,7 +214,7 @@ def update_agent(agent_id):
         return jsonify({"message": "Failed to update agent"}), 500
 
 
-@app.route("/agents/delete/<int:agent_id>", methods=["DELETE"])
+@app.route("/api/agents/delete/<int:agent_id>", methods=["DELETE"])
 @login_required
 def delete_agent(agent_id):
     agent = Agent.query.get_or_404(agent_id)
@@ -280,7 +286,7 @@ class Availability(db.Model):
     )
 
 
-@app.route("/agents/<int:agent_id>/availability", methods=["GET"])
+@app.route("/api/agents/<int:agent_id>/availability", methods=["GET"])
 @login_required
 def get_agent_availability(agent_id):
     try:
@@ -316,7 +322,7 @@ def get_agent_availability(agent_id):
         return jsonify({"message": "Failed to fetch availability data"}), 500
 
 
-@app.route("/agents/availability/update/<int:agent_id>", methods=["PUT"])
+@app.route("/api/agents/availability/update/<int:agent_id>", methods=["PUT"])
 @login_required
 def update_availability(agent_id):
     try:
@@ -367,7 +373,7 @@ class Blacklist(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
-@app.route("/agents/blacklist/get/<int:agent_id>", methods=["GET"])
+@app.route("/api/agents/blacklist/get/<int:agent_id>", methods=["GET"])
 @login_required
 def get_blacklist_for_agent(agent_id):
     try:
@@ -388,7 +394,7 @@ def get_blacklist_for_agent(agent_id):
         return jsonify({"message": "Failed to retrieve blacklist"}), 500
 
 
-@app.route("/agents/blacklist/update/<int:agent_id>", methods=["PUT"])
+@app.route("/api/agents/blacklist/update/<int:agent_id>", methods=["PUT"])
 @login_required
 def update_blacklist(agent_id):
     try:
@@ -637,7 +643,7 @@ def generate_schedule_func(monday_date):
     db.session.commit()
 
 
-@app.route("/schedule/generate", methods=["POST"])
+@app.route("/api/schedule/generate", methods=["POST"])
 @login_required
 def generate_schedule():
     date_str = request.args.get("date")  # Getting the date from query parameter
@@ -651,7 +657,7 @@ def generate_schedule():
     return jsonify({"message": "Schedule generated"}), 201
 
 
-@app.route("/schedule/get", methods=["GET"])
+@app.route("/api/schedule/get", methods=["GET"])
 @login_required
 def get_schedule():
     date_str = request.args.get("date")  # Getting the date from query parameter
@@ -717,7 +723,7 @@ def get_schedule():
     }
     return jsonify(schedule_data)
 
-@app.route("/schedule/set", methods=["POST"]) 
+@app.route("/api/schedule/set", methods=["POST"]) 
 @login_required
 def set_schedule():
     data = request.json
