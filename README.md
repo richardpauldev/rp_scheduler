@@ -10,7 +10,7 @@ Introduction
 
 Features
 
-    Deck COnfiguration Reading: Parses a JSON file to obtain deck information.
+    Deck Configuration Reading: Parses a JSON file to obtain deck information.
     Image Downloading: Automatically downloads card images from specified URLs.
     PDF Generation: Arranges images in a grid layout and generates a PDF file.
     Customizable Layour: Supports adjustments in margins, card sizes, and page layout.
