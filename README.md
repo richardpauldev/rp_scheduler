@@ -8,13 +8,6 @@ Introduction
     that have been paired together during the last 6 months are paired again, and ensuring agents share at
     least one day where they are both available.
 
-Features
-
-    Deck Configuration Reading: Parses a JSON file to obtain deck information.
-    Image Downloading: Automatically downloads card images from specified URLs.
-    PDF Generation: Arranges images in a grid layout and generates a PDF file.
-    Customizable Layour: Supports adjustments in margins, card sizes, and page layout.
-
 Requirements
 
   - **Python 3.x**: [Install Python](https://www.python.org/downloads/)
